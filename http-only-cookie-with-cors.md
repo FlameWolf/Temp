@@ -14,6 +14,7 @@ FlameWolf: How to use HTTP-only cookies with cross-origin (CORS) requests? Give 
 GitHub Copilot: Let's build a secure authentication system using HTTP-only cookies with CORS support.
 
 Plan:
+
 1. Create Fastify server with CORS config
 2. Add login endpoint that sets HTTP-only cookie
 3. Add protected endpoint that requires the cookie
@@ -21,113 +22,117 @@ Plan:
 5. Add login and protected data fetch functionality
 
 **Backend (Fastify)**
+
 ```typescript
 // server.ts
-import Fastify from 'fastify'
-import cookie from '@fastify/cookie'
-import cors from '@fastify/cors'
-import jwt from 'jsonwebtoken'
+import Fastify from "fastify";
+import cookie from "@fastify/cookie";
+import cors from "@fastify/cors";
+import jwt from "jsonwebtoken";
 
-const fastify = Fastify({ logger: true })
+const fastify = Fastify({ logger: true });
 
 // CORS setup
 await fastify.register(cors, {
-  origin: 'http://localhost:3000', // React app URL
-  credentials: true // Important for cookies
-})
+	origin: "http://localhost:3000", // React app URL
+	credentials: true // Important for cookies
+});
 
-await fastify.register(cookie)
+await fastify.register(cookie);
 
-const JWT_SECRET = 'your-secret-key'
+const JWT_SECRET = "your-secret-key";
 
 // Login endpoint
-fastify.post('/login', async (request, reply) => {
-  const token = jwt.sign({ userId: '123' }, JWT_SECRET)
+fastify.post("/login", async (request, reply) => {
+	const token = jwt.sign({ userId: "123" }, JWT_SECRET);
 
-  reply
-    .setCookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/',
-      maxAge: 24 * 60 * 60 * 1000 // 24 hours
-    })
-    .send({ success: true })
-})
+	reply
+		.setCookie("token", token, {
+			httpOnly: true,
+			secure: process.env.NODE_ENV === "production",
+			sameSite: "strict",
+			path: "/",
+			maxAge: 24 * 60 * 60 * 1000 // 24 hours
+		})
+		.send({ success: true });
+});
 
 // Protected endpoint
-fastify.get('/protected', async (request, reply) => {
-  const token = request.cookies.token
+fastify.get("/protected", async (request, reply) => {
+	const token = request.cookies.token;
 
-  if (!token) {
-    reply.code(401).send({ error: 'Unauthorized' })
-    return
-  }
+	if (!token) {
+		reply.code(401).send({ error: "Unauthorized" });
+		return;
+	}
 
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET)
-    reply.send({ data: 'Protected data', user: decoded })
-  } catch (err) {
-    reply.code(401).send({ error: 'Invalid token' })
-  }
-})
+	try {
+		const decoded = jwt.verify(token, JWT_SECRET);
+		reply.send({ data: "Protected data", user: decoded });
+	} catch (err) {
+		reply.code(401).send({ error: "Invalid token" });
+	}
+});
 
-fastify.listen({ port: 8000 })
+fastify.listen({ port: 8000 });
 ```
 
 **Frontend (React)**
+
 ```typescript
 // App.tsx
-import { useState } from 'react'
+import { useState } from "react";
 
 function App() {
-  const [data, setData] = useState(null)
+	const [data, setData] = useState(null);
 
-  const login = async () => {
-    try {
-      await fetch('http://localhost:8000/login', {
-        method: 'POST',
-        credentials: 'include', // Important for cookies
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      })
-    } catch (err) {
-      console.error('Login failed:', err)
-    }
-  }
+	const login = async () => {
+		try {
+			await fetch("http://localhost:8000/login", {
+				method: "POST",
+				credentials: "include", // Important for cookies
+				headers: {
+					"Content-Type": "application/json"
+				}
+			});
+		} catch (err) {
+			console.error("Login failed:", err);
+		}
+	};
 
-  const fetchProtectedData = async () => {
-    try {
-      const response = await fetch('http://localhost:8000/protected', {
-        credentials: 'include' // Important for cookies
-      })
-      const result = await response.json()
-      setData(result)
-    } catch (err) {
-      console.error('Failed to fetch data:', err)
-    }
-  }
+	const fetchProtectedData = async () => {
+		try {
+			const response = await fetch("http://localhost:8000/protected", {
+				credentials: "include" // Important for cookies
+			});
+			const result = await response.json();
+			setData(result);
+		} catch (err) {
+			console.error("Failed to fetch data:", err);
+		}
+	};
 
-  return (
-    <div>
-      <button onClick={login}>Login</button>
-      <button onClick={fetchProtectedData}>Get Protected Data</button>
-      {data && <pre>{JSON.stringify(data, null, 2)}</pre>}
-    </div>
-  )
+	return (
+		<div>
+			<button onClick={login}>Login</button>
+			<button onClick={fetchProtectedData}>Get Protected Data</button>
+			{data && <pre>{JSON.stringify(data, null, 2)}</pre>}
+		</div>
+	);
 }
 
-export default App
+export default App;
 ```
 
 Key points:
+
 - Set `credentials: true` in CORS config on server
 - Use `credentials: 'include'` in fetch requests on client
 - Set appropriate cookie options (httpOnly, secure, sameSite)
 - Use environment-specific origins in CORS config
 
 To run:
+
 1. Install dependencies: `@fastify/cookie`, `@fastify/cors`, `jsonwebtoken`
 2. Start Fastify server: `npm run dev`
 3. Start React app: `npm start`
@@ -137,25 +142,27 @@ FlameWolf: Cool. Now do the same with .NET Core Web API server, and SolidJS clie
 GitHub Copilot: Let's build authentication with HTTP-only cookies using .NET 8 Web API and SolidJS.
 
 Plan:
+
 1. Create .NET API with CORS and JWT authentication
 2. Setup SolidJS project with TypeScript
 3. Implement login and protected endpoints
 4. Create client-side auth components
 
 **Backend (.NET 8 Web API)**
+
 ```csharp
 // Program.cs
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowSolidApp", policy =>
-    {
-        policy.WithOrigins("http://localhost:5173")
-              .AllowCredentials()
-              .AllowAnyHeader()
-              .AllowAnyMethod();
-    });
+	options.AddPolicy("AllowSolidApp", policy =>
+	{
+		policy.WithOrigins("http://localhost:5173")
+			.AllowCredentials()
+			.AllowAnyHeader()
+			.AllowAnyMethod();
+	});
 });
 
 var app = builder.Build();
@@ -165,34 +172,36 @@ const string JWT_SECRET = "your-secret-key-at-least-32-chars-long";
 
 app.MapPost("/login", async (HttpContext context) =>
 {
-    var token = JwtHelper.GenerateToken(JWT_SECRET);
+	var token = JwtHelper.GenerateToken(JWT_SECRET);
 
-    context.Response.Cookies.Append("token", token, new CookieOptions
-    {
-        HttpOnly = true,
-        Secure = true,
-        SameSite = SameSiteMode.Strict,
-        MaxAge = TimeSpan.FromHours(24)
-    });
+	context.Response.Cookies.Append("token", token, new CookieOptions
+	{
+		HttpOnly = true,
+		Secure = true,
+		SameSite = SameSiteMode.Strict,
+		MaxAge = TimeSpan.FromHours(24)
+	});
 
-    return Results.Ok(new { success = true });
+	return Results.Ok(new { success = true });
 });
 
 app.MapGet("/protected", (HttpContext context) =>
 {
-    var token = context.Request.Cookies["token"];
-    if (string.IsNullOrEmpty(token))
-        return Results.Unauthorized();
+	var token = context.Request.Cookies["token"];
+	if (string.IsNullOrEmpty(token))
+	{
+		return Results.Unauthorized();
+	}
 
-    try
-    {
-        var payload = JwtHelper.ValidateToken(token, JWT_SECRET);
-        return Results.Ok(new { data = "Protected data", user = payload });
-    }
-    catch
-    {
-        return Results.Unauthorized();
-    }
+	try
+	{
+		var payload = JwtHelper.ValidateToken(token, JWT_SECRET);
+		return Results.Ok(new { data = "Protected data", user = payload });
+	}
+	catch
+	{
+		return Results.Unauthorized();
+	}
 });
 
 app.Run();
@@ -200,111 +209,109 @@ app.Run();
 // JwtHelper.cs
 public static class JwtHelper
 {
-    public static string GenerateToken(string secret)
-    {
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
-        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+	public static string GenerateToken(string secret)
+	{
+		var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
+		var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
-        var token = new JwtSecurityToken(
-            claims: new[] { new Claim("userId", "123") },
-            expires: DateTime.Now.AddHours(24),
-            signingCredentials: credentials
-        );
+		var token = new JwtSecurityToken
+		(
+			claims: new[] { new Claim("userId", "123") },
+			expires: DateTime.Now.AddHours(24),
+			signingCredentials: credentials
+		);
 
-        return new JwtSecurityTokenHandler().WriteToken(token);
-    }
+		return new JwtSecurityTokenHandler().WriteToken(token);
+	}
 
-    public static JwtPayload ValidateToken(string token, string secret)
-    {
-        var handler = new JwtSecurityTokenHandler();
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
+	public static JwtPayload ValidateToken(string token, string secret)
+	{
+		var handler = new JwtSecurityTokenHandler();
+		var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
 
-        handler.ValidateToken(token, new TokenValidationParameters
-        {
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = key,
-            ValidateIssuer = false,
-            ValidateAudience = false
-        }, out var validatedToken);
+		handler.ValidateToken(token, new TokenValidationParameters
+		{
+			ValidateIssuerSigningKey = true,
+			IssuerSigningKey = key,
+			ValidateIssuer = false,
+			ValidateAudience = false
+		}, out var validatedToken);
 
-        return ((JwtSecurityToken)validatedToken).Payload;
-    }
+		return ((JwtSecurityToken)validatedToken).Payload;
+	}
 }
 ```
 
 **Frontend (SolidJS)**
+
 ```typescript
 // src/App.tsx
-import { createSignal, Show } from 'solid-js'
-import type { Component } from 'solid-js'
+import { createSignal, Show } from "solid-js";
+import type { Component } from "solid-js";
 
 const App: Component = () => {
-  const [data, setData] = createSignal<any>(null)
-  const [error, setError] = createSignal<string>('')
+	const [data, setData] = createSignal<any>(null);
+	const [error, setError] = createSignal<string>("");
 
-  const login = async () => {
-    try {
-      await fetch('http://localhost:5000/login', {
-        method: 'POST',
-        credentials: 'include'
-      })
-      setError('')
-    } catch (err) {
-      setError('Login failed')
-    }
-  }
+	const login = async () => {
+		try {
+			await fetch("http://localhost:5000/login", {
+				method: "POST",
+				credentials: "include"
+			});
+			setError("");
+		} catch (err) {
+			setError("Login failed");
+		}
+	};
 
-  const fetchProtected = async () => {
-    try {
-      const res = await fetch('http://localhost:5000/protected', {
-        credentials: 'include'
-      })
-      if (!res.ok) throw new Error('Unauthorized')
+	const fetchProtected = async () => {
+		try {
+			const res = await fetch("http://localhost:5000/protected", {
+				credentials: "include"
+			});
+			if (!res.ok) {
+				throw new Error("Unauthorized");
+			}
 
-      const json = await res.json()
-      setData(json)
-      setError('')
-    } catch (err) {
-      setError('Failed to fetch protected data')
-      setData(null)
-    }
-  }
+			const json = await res.json();
+			setData(json);
+			setError("");
+		} catch (err) {
+			setError("Failed to fetch protected data");
+			setData(null);
+		}
+	};
 
-  return (
-    <div class="p-4">
-      <div class="space-x-4 mb-4">
-        <button
-          class="px-4 py-2 bg-blue-500 text-white rounded"
-          onClick={login}
-        >
-          Login
-        </button>
-        <button
-          class="px-4 py-2 bg-green-500 text-white rounded"
-          onClick={fetchProtected}
-        >
-          Get Protected Data
-        </button>
-      </div>
+	return (
+		<div class="p-4">
+			<div class="space-x-4 mb-4">
+				<button class="px-4 py-2 bg-blue-500 text-white rounded" onClick={login}>
+					Login
+				</button>
+				<button class="px-4 py-2 bg-green-500 text-white rounded" onClick={fetchProtected}>
+					Get Protected Data
+				</button>
+			</div>
 
-      <Show when={error()}>
-        <div class="text-red-500">{error()}</div>
-      </Show>
+			<Show when={error()}>
+				<div class="text-red-500">{error()}</div>
+			</Show>
 
-      <Show when={data()}>
-        <pre class="bg-gray-100 p-4 rounded">
-          {JSON.stringify(data(), null, 2)}
-        </pre>
-      </Show>
-    </div>
-  )
-}
+			<Show when={data()}>
+				<pre class="bg-gray-100 p-4 rounded">{JSON.stringify(data(), null, 2)}</pre>
+			</Show>
+		</div>
+	);
+};
 
-export default App
+export default App;
 ```
 
 To run:
+
 1. Create .NET project:
+
 ```bash
 dotnet new webapi -n AuthApi
 cd AuthApi
@@ -313,6 +320,7 @@ dotnet watch run
 ```
 
 2. Create SolidJS project:
+
 ```bash
 npm create vite@latest auth-client -- --template solid-ts
 cd auth-client
@@ -321,6 +329,7 @@ npm run dev
 ```
 
 Make sure to:
+
 - Update CORS origins to match your SolidJS dev server port
 - Use proper JWT secret in production
 - Add proper error handling and loading states
