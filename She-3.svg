@@ -1,0 +1,8 @@
+<?xml version="1.0" standalone="no"?>
+<svg width="256" height="672" viewBox="1024 -32 256 672" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+	<g xmlns="http://www.w3.org/2000/svg" data-layer="Layer 1" style="visibility: visible;">
+		<path d="M 1088 576 L 1216 32" style="fill: rgba(0, 0, 0, 0); stroke-width: 2px; stroke-linejoin: round;" stroke="rgba(41, 173, 255, 1)" id="u2c9j24c"/>
+		<path d="M 1168 576 L 1088 320 L 1200 256 L 1104 144 L 1168 80" style="fill: rgba(0, 0, 0, 0); stroke-width: 2px; stroke-linejoin: round;" stroke="rgba(41, 173, 255, 1)" id="pu84dl81"/>
+		<circle cx="1160" cy="176" r="16" style="stroke: rgba(0, 0, 0, 0); fill: rgb(41, 173, 255); stroke-width: 2px; stroke-linejoin: round;" id="7n2i6re2"/>
+	</g>
+</svg>
