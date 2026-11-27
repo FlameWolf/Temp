@@ -1,0 +1,3131 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8"/>
+		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+		<meta name="color-scheme" content="light dark"/>
+		<title>Magnetic field simulator</title>
+		<script>
+			// Apply the saved (or system) theme before the first paint so the page never flashes.
+			(function () {
+				var theme = null;
+				try {
+					if (!window.storage) {
+						theme = window.localStorage.getItem("mfs-theme");
+					}
+				} catch (e) {
+					theme = null;
+				}
+				if (theme !== "light" && theme !== "dark") {
+					theme = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+				}
+				document.documentElement.setAttribute("data-theme", theme);
+			})();
+		</script>
+		<style>
+			:root {
+				--font-body: "Bahnschrift", "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
+				--font-display: "Bahnschrift", "DIN Alternate", "DIN Next LT Pro", "D-DIN", "Avenir Next", system-ui, sans-serif;
+				--bar-h: 56px;
+				--panel-w: 340px;
+
+				--paper: #e9edf1;
+				--panel: #f7f9fb;
+				--stage: #ffffff;
+				--stage-filings: #f0f1f2;
+				--ink: #17202b;
+				--ink-2: #3e4957;
+				--muted: #667283;
+				--rule: #d5dce4;
+				--track: #d0d7df;
+				--track-soft: #e5e9ee;
+				--control: #17202b;
+				--control-ink: #ffffff;
+				--knob: #ffffff;
+				--knob-on: #ffffff;
+				--focus: #2a62c9;
+				--north: #d4372c;
+				--south: #2a62c9;
+				--earth: #0b8577;
+				--null: #b0189b;
+				--field-ink: #1d2734;
+				--grain: #1c2026;
+				--hud: rgba(247, 249, 251, 0.9);
+				--hud-rule: rgba(23, 32, 43, 0.12);
+				color-scheme: light;
+			}
+
+			:root[data-theme="dark"] {
+				--paper: #0e1723;
+				--panel: #121d2b;
+				--stage: #0f1926;
+				--stage-filings: #111a25;
+				--ink: #e3e9f1;
+				--ink-2: #b9c5d3;
+				--muted: #8b9aad;
+				--rule: #243245;
+				--track: #2d3c52;
+				--track-soft: #1b2839;
+				--control: #e3e9f1;
+				--control-ink: #0e1723;
+				--knob: #c5cfdb;
+				--knob-on: #0e1723;
+				--focus: #79a6ff;
+				--north: #f0584d;
+				--south: #5b8ef0;
+				--earth: #3cc7b4;
+				--null: #f26bd2;
+				--field-ink: #c9d5e4;
+				--grain: #cfd7e1;
+				--hud: rgba(18, 29, 43, 0.88);
+				--hud-rule: rgba(227, 233, 241, 0.12);
+				color-scheme: dark;
+			}
+
+			*,
+			*::before,
+			*::after {
+				box-sizing: border-box;
+			}
+
+			[hidden] {
+				display: none !important;
+			}
+
+			html,
+			body {
+				margin: 0;
+			}
+
+			body {
+				display: flex;
+				flex-direction: column;
+				height: 100vh;
+				height: 100dvh;
+				overflow: hidden;
+				font-family: var(--font-body);
+				font-size: 14px;
+				line-height: 1.45;
+				color: var(--ink);
+				background: var(--paper);
+				-webkit-font-smoothing: antialiased;
+				-moz-osx-font-smoothing: grayscale;
+			}
+
+			button,
+			input {
+				font: inherit;
+				color: inherit;
+			}
+
+			:focus-visible {
+				outline: 2px solid var(--focus);
+				outline-offset: 2px;
+			}
+
+			/* ---------- Header ---------- */
+
+			.bar {
+				flex: none;
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				gap: 16px;
+				height: var(--bar-h);
+				padding: 0 14px 0 20px;
+				background: var(--panel);
+				border-bottom: 1px solid var(--rule);
+			}
+
+			.title {
+				display: flex;
+				align-items: center;
+				gap: 12px;
+				min-width: 0;
+			}
+
+			.mark {
+				flex: none;
+				width: 30px;
+				height: 12px;
+			}
+
+			.title h1 {
+				margin: 0;
+				font-family: var(--font-display);
+				font-size: 19px;
+				font-weight: 600;
+				letter-spacing: 0.01em;
+				white-space: nowrap;
+			}
+
+			.title p {
+				margin: 0;
+				overflow: hidden;
+				color: var(--muted);
+				font-size: 13px;
+				white-space: nowrap;
+				text-overflow: ellipsis;
+			}
+
+			.bar-actions {
+				display: flex;
+				align-items: center;
+				gap: 8px;
+			}
+
+			.toast {
+				color: var(--muted);
+				font-size: 13px;
+				opacity: 0;
+				transition: opacity 0.2s ease;
+			}
+
+			.toast.is-on {
+				opacity: 1;
+			}
+
+			.btn {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				gap: 8px;
+				min-height: 36px;
+				padding: 0 14px;
+				border: 1px solid var(--rule);
+				border-radius: 8px;
+				background: transparent;
+				cursor: pointer;
+				transition:
+					background-color 0.15s ease,
+					border-color 0.15s ease;
+			}
+
+			.btn:hover {
+				background: var(--track-soft);
+				border-color: var(--track);
+			}
+
+			.btn:disabled {
+				cursor: not-allowed;
+				opacity: 0.5;
+			}
+
+			.btn:disabled:hover {
+				background: transparent;
+				border-color: var(--rule);
+			}
+
+			.btn-wide {
+				width: 100%;
+				margin-top: 14px;
+			}
+
+			.icon-btn {
+				width: 36px;
+				padding: 0;
+			}
+
+			.icon-btn svg {
+				width: 18px;
+				height: 18px;
+			}
+
+			:root[data-theme="dark"] .i-moon,
+			:root:not([data-theme="dark"]) .i-sun {
+				display: none;
+			}
+
+			/* ---------- Layout ---------- */
+
+			.app {
+				flex: 1;
+				min-height: 0;
+				display: grid;
+				grid-template-columns: minmax(0, 1fr) var(--panel-w);
+			}
+
+			.stage {
+				position: relative;
+				overflow: hidden;
+				background: var(--stage);
+				touch-action: pan-y;
+				outline: none;
+				user-select: none;
+				-webkit-user-select: none;
+				-webkit-tap-highlight-color: transparent;
+			}
+
+			.stage:focus-visible {
+				box-shadow: inset 0 0 0 2px var(--focus);
+			}
+
+			.stage canvas {
+				position: absolute;
+				inset: 0;
+				display: block;
+			}
+
+			.panel {
+				overflow-y: auto;
+				padding: 4px 0 28px;
+				background: var(--panel);
+				border-left: 1px solid var(--rule);
+			}
+
+			/* ---------- Overlays on the stage ---------- */
+
+			.hud {
+				position: absolute;
+				pointer-events: none;
+				color: var(--ink-2);
+				font-size: 12.5px;
+				line-height: 1.35;
+			}
+
+			.hud-card {
+				background: var(--hud);
+				border: 1px solid var(--hud-rule);
+				border-radius: 10px;
+				-webkit-backdrop-filter: blur(6px);
+				backdrop-filter: blur(6px);
+			}
+
+			.north {
+				top: 14px;
+				left: 14px;
+				display: flex;
+				align-items: center;
+				gap: 9px;
+				padding: 8px 12px 8px 9px;
+			}
+
+			.north svg {
+				flex: none;
+				width: 14px;
+				height: 26px;
+				color: var(--earth);
+			}
+
+			.north.is-off svg {
+				color: var(--muted);
+			}
+
+			.north b {
+				display: block;
+				color: var(--ink);
+				font-family: var(--font-display);
+				font-size: 13px;
+				font-weight: 600;
+			}
+
+			.north span {
+				display: block;
+				color: var(--muted);
+				font-variant-numeric: tabular-nums;
+			}
+
+			.legend {
+				top: 14px;
+				right: 14px;
+				display: grid;
+				gap: 5px;
+				padding: 9px 12px;
+			}
+
+			.lg-row {
+				display: flex;
+				align-items: center;
+				gap: 9px;
+				white-space: nowrap;
+			}
+
+			.lg-line {
+				flex: none;
+				width: 22px;
+				border-top: 1.5px solid var(--field-ink);
+			}
+
+			.lg-earth {
+				border-color: var(--earth);
+			}
+
+			.lg-sep {
+				border-top-width: 2px;
+				border-color: var(--null);
+			}
+
+			.lg-null {
+				position: relative;
+				flex: none;
+				width: 13px;
+				height: 13px;
+				margin: 0 4.5px;
+				border: 2px solid var(--null);
+				border-radius: 50%;
+			}
+
+			.lg-null::before,
+			.lg-null::after {
+				content: "";
+				position: absolute;
+				top: 50%;
+				left: 50%;
+				width: 7px;
+				height: 1.6px;
+				background: var(--null);
+				transform: translate(-50%, -50%) rotate(45deg);
+			}
+
+			.lg-null::after {
+				transform: translate(-50%, -50%) rotate(-45deg);
+			}
+
+			.readout {
+				left: 14px;
+				bottom: 14px;
+				width: 256px;
+				padding: 11px 14px 12px;
+			}
+
+			.ro-top {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				gap: 8px;
+				margin-bottom: 8px;
+			}
+
+			.ro-title {
+				color: var(--ink);
+				font-family: var(--font-display);
+				font-size: 14px;
+				font-weight: 600;
+			}
+
+			.ro-state {
+				padding: 2px 9px;
+				border-radius: 999px;
+				background: var(--track-soft);
+				color: var(--ink-2);
+				font-size: 12px;
+				white-space: nowrap;
+			}
+
+			.ro-state.is-earth {
+				color: var(--earth);
+				background: var(--track-soft);
+				background: color-mix(in srgb, var(--earth) 14%, transparent);
+			}
+
+			.ro-state.is-null {
+				color: var(--null);
+				background: var(--track-soft);
+				background: color-mix(in srgb, var(--null) 14%, transparent);
+			}
+
+			.ro-grid {
+				display: grid;
+				grid-template-columns: 1fr 1fr;
+				gap: 7px 14px;
+				margin: 0;
+			}
+
+			.ro-grid div {
+				min-width: 0;
+			}
+
+			.ro-grid dt {
+				display: flex;
+				align-items: center;
+				gap: 6px;
+				color: var(--muted);
+				font-size: 11.5px;
+			}
+
+			.ro-grid dd {
+				margin: 0;
+				color: var(--ink);
+				font-family: var(--font-display);
+				font-size: 15px;
+				font-variant-numeric: tabular-nums;
+				white-space: nowrap;
+			}
+
+			.sw {
+				flex: none;
+				width: 9px;
+				height: 9px;
+				border-radius: 2px;
+			}
+
+			.sw-magnet {
+				background: linear-gradient(90deg, var(--north) 50%, var(--south) 50%);
+			}
+
+			.sw-earth {
+				background: var(--earth);
+			}
+
+			.ro-bar {
+				height: 5px;
+				margin-top: 10px;
+				overflow: hidden;
+				border-radius: 3px;
+				background: var(--earth);
+			}
+
+			.ro-bar span {
+				display: block;
+				width: 50%;
+				height: 100%;
+				background: linear-gradient(90deg, var(--north), var(--south));
+			}
+
+			.ro-note {
+				margin: 8px 0 0;
+				color: var(--null);
+				font-size: 12px;
+			}
+
+			.hint {
+				right: 14px;
+				bottom: 12px;
+				max-width: 290px;
+				margin: 0;
+				color: var(--muted);
+				text-align: right;
+			}
+
+			/* ---------- Control panel ---------- */
+
+			.group {
+				padding: 16px 20px 18px;
+				border-bottom: 1px solid var(--rule);
+			}
+
+			.group:last-child {
+				border-bottom: 0;
+			}
+
+			.group h2 {
+				margin: 0 0 12px;
+				font-family: var(--font-display);
+				font-size: 15px;
+				font-weight: 600;
+				letter-spacing: 0.01em;
+			}
+
+			.seg {
+				display: grid;
+				grid-template-columns: 1fr 1fr;
+				gap: 2px;
+				padding: 3px;
+				border-radius: 10px;
+				background: var(--track-soft);
+			}
+
+			.seg button {
+				min-height: 34px;
+				padding: 0 10px;
+				border: 0;
+				border-radius: 7px;
+				background: transparent;
+				color: var(--ink-2);
+				cursor: pointer;
+				transition:
+					background-color 0.15s ease,
+					color 0.15s ease;
+			}
+
+			.seg button:hover {
+				color: var(--ink);
+			}
+
+			.seg button[aria-checked="true"] {
+				background: var(--control);
+				color: var(--control-ink);
+			}
+
+			.field {
+				display: grid;
+				grid-template-columns: 1fr auto;
+				align-items: baseline;
+				gap: 2px 12px;
+				margin-top: 14px;
+			}
+
+			.field label {
+				color: var(--ink-2);
+			}
+
+			.field output {
+				color: var(--ink);
+				font-family: var(--font-display);
+				font-variant-numeric: tabular-nums;
+			}
+
+			.field input[type="range"] {
+				grid-column: 1 / -1;
+			}
+
+			.field.is-disabled {
+				opacity: 0.45;
+			}
+
+			input[type="range"] {
+				--fill: 50%;
+				width: 100%;
+				height: 24px;
+				margin: 0;
+				background: transparent;
+				cursor: pointer;
+				-webkit-appearance: none;
+				appearance: none;
+			}
+
+			input[type="range"]:disabled {
+				cursor: not-allowed;
+			}
+
+			input[type="range"]::-webkit-slider-runnable-track {
+				height: 4px;
+				border-radius: 2px;
+				background: linear-gradient(to right, var(--control) 0 var(--fill), var(--track) var(--fill) 100%);
+			}
+
+			input[type="range"]::-webkit-slider-thumb {
+				width: 16px;
+				height: 16px;
+				margin-top: -6px;
+				border: 2px solid var(--control);
+				border-radius: 50%;
+				background: var(--panel);
+				-webkit-appearance: none;
+				appearance: none;
+			}
+
+			input[type="range"]::-moz-range-track {
+				height: 4px;
+				border-radius: 2px;
+				background: var(--track);
+			}
+
+			input[type="range"]::-moz-range-progress {
+				height: 4px;
+				border-radius: 2px;
+				background: var(--control);
+			}
+
+			input[type="range"]::-moz-range-thumb {
+				width: 12px;
+				height: 12px;
+				border: 2px solid var(--control);
+				border-radius: 50%;
+				background: var(--panel);
+			}
+
+			.toggle {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				gap: 12px;
+				margin-top: 14px;
+				color: var(--ink-2);
+				cursor: pointer;
+			}
+
+			.toggle.is-disabled {
+				cursor: not-allowed;
+				opacity: 0.45;
+			}
+
+			.switch {
+				position: relative;
+				flex: none;
+				width: 36px;
+				height: 20px;
+				margin: 0;
+				border-radius: 10px;
+				background: var(--track);
+				cursor: pointer;
+				transition: background-color 0.15s ease;
+				-webkit-appearance: none;
+				appearance: none;
+			}
+
+			.switch::after {
+				content: "";
+				position: absolute;
+				top: 2px;
+				left: 2px;
+				width: 16px;
+				height: 16px;
+				border-radius: 50%;
+				background: var(--knob);
+				box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+				transition:
+					transform 0.15s ease,
+					background-color 0.15s ease;
+			}
+
+			.switch:checked {
+				background: var(--control);
+			}
+
+			.switch:checked::after {
+				background: var(--knob-on);
+				transform: translateX(16px);
+			}
+
+			.switch:disabled {
+				cursor: not-allowed;
+			}
+
+			.chips {
+				display: grid;
+				grid-template-columns: repeat(4, 1fr);
+				gap: 6px;
+				margin-top: 10px;
+			}
+
+			.chip {
+				min-height: 30px;
+				padding: 0 4px;
+				border: 1px solid var(--rule);
+				border-radius: 6px;
+				background: transparent;
+				color: var(--ink-2);
+				font-size: 13px;
+				cursor: pointer;
+				transition:
+					background-color 0.15s ease,
+					border-color 0.15s ease;
+			}
+
+			.chip:hover {
+				background: var(--track-soft);
+			}
+
+			.chip[aria-pressed="true"] {
+				border-color: var(--control);
+				color: var(--ink);
+				box-shadow: inset 0 0 0 1px var(--control);
+			}
+
+			.note {
+				margin: 10px 0 0;
+				color: var(--muted);
+				font-size: 12.5px;
+			}
+
+			.about p {
+				max-width: 62ch;
+				margin: 0 0 10px;
+				color: var(--ink-2);
+				font-size: 13px;
+				line-height: 1.55;
+			}
+
+			.about p:last-child {
+				margin-bottom: 0;
+			}
+
+			kbd {
+				display: inline-block;
+				min-width: 1.6em;
+				padding: 0 0.35em;
+				border: 1px solid var(--rule);
+				border-bottom-width: 2px;
+				border-radius: 4px;
+				background: var(--stage);
+				font-family: var(--font-display);
+				font-size: 12px;
+				line-height: 1.5;
+				text-align: center;
+			}
+
+			/* ---------- Smaller screens ---------- */
+
+			@media (max-width: 880px) {
+				body {
+					height: auto;
+					overflow: auto;
+				}
+
+				.app {
+					display: block;
+				}
+
+				.stage {
+					height: min(68vh, 640px);
+					min-height: 360px;
+				}
+
+				.panel {
+					overflow: visible;
+					border-left: 0;
+					border-top: 1px solid var(--rule);
+				}
+
+				.title p {
+					display: none;
+				}
+			}
+
+			@media (max-width: 600px) {
+				.bar {
+					padding: 0 10px 0 14px;
+				}
+
+				.title h1 {
+					font-size: 17px;
+				}
+
+				.hint {
+					display: none;
+				}
+
+				.north,
+				.legend {
+					top: 10px;
+					font-size: 11.5px;
+				}
+
+				.north {
+					left: 10px;
+				}
+
+				.legend {
+					right: 10px;
+				}
+
+				.readout {
+					left: 10px;
+					right: 10px;
+					bottom: 10px;
+					width: auto;
+				}
+
+				.ro-grid {
+					grid-template-columns: repeat(4, auto);
+					gap: 4px 12px;
+				}
+
+				.ro-grid dd {
+					font-size: 13.5px;
+				}
+
+				.toast {
+					display: none;
+				}
+			}
+
+			@media (prefers-reduced-motion: reduce) {
+				*,
+				*::before,
+				*::after {
+					transition: none !important;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<header class="bar">
+			<div class="title">
+				<svg class="mark" viewBox="0 0 32 12" aria-hidden="true">
+					<rect x="0.5" y="0.5" width="31" height="11" rx="2" style="fill: var(--south)"></rect>
+					<path d="M2.5 0.5 H16 V11.5 H2.5 A2 2 0 0 1 0.5 9.5 V2.5 A2 2 0 0 1 2.5 0.5 Z" style="fill: var(--north)"></path>
+				</svg>
+				<h1>Magnetic field simulator</h1>
+				<p>A bar magnet in the Earth’s field</p>
+			</div>
+			<div class="bar-actions">
+				<span class="toast" id="toast" role="status"></span>
+				<button type="button" class="btn" id="resetBtn" title="Restore every setting, the compass position and the theme to their defaults">Reset</button>
+				<button type="button" class="btn icon-btn" id="themeBtn" aria-label="Switch to dark mode">
+					<svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7Z"></path>
+					</svg>
+					<svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+						<circle cx="12" cy="12" r="4.2"></circle>
+						<path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"></path>
+					</svg>
+				</button>
+			</div>
+		</header>
+
+		<main class="app">
+			<section class="stage" id="stage" tabindex="0" aria-label="Magnetic field view. Use the arrow keys to move the compass, and the [ and ] keys to rotate the magnet.">
+				<canvas id="fieldCanvas" aria-hidden="true"></canvas>
+				<canvas id="uiCanvas" aria-hidden="true"></canvas>
+
+				<div class="hud hud-card north" id="northHud" aria-hidden="true">
+					<svg viewBox="0 0 14 26">
+						<path d="M7 1 L12.5 13 L8.2 11.4 L8.2 25 L5.8 25 L5.8 11.4 L1.5 13 Z" fill="currentColor"></path>
+					</svg>
+					<div>
+						<b>Geographic north</b>
+						<span id="earthHud">Earth’s field 30 µT</span>
+					</div>
+				</div>
+
+				<div class="hud hud-card legend" id="legend" aria-hidden="true" hidden>
+					<div class="lg-row"><i class="lg-line"></i><span id="lgMagnetText">Field line from the magnet</span></div>
+					<div class="lg-row" id="lgEarth"><i class="lg-line lg-earth"></i>Earth’s field line</div>
+					<div class="lg-row" id="lgSep"><i class="lg-line lg-sep"></i>Line through a null point</div>
+					<div class="lg-row" id="lgNull"><i class="lg-null"></i><span id="lgNullText">Null point</span></div>
+				</div>
+
+				<div class="hud hud-card readout" id="readout">
+					<div class="ro-top">
+						<span class="ro-title">Compass</span>
+						<span class="ro-state" id="roState" aria-live="polite"></span>
+					</div>
+					<dl class="ro-grid">
+						<div>
+							<dt>Resultant</dt>
+							<dd id="roNet">–</dd>
+						</div>
+						<div>
+							<dt>Needle points</dt>
+							<dd id="roDir">–</dd>
+						</div>
+						<div>
+							<dt><i class="sw sw-magnet"></i>Magnet</dt>
+							<dd id="roMag">–</dd>
+						</div>
+						<div>
+							<dt><i class="sw sw-earth"></i>Earth</dt>
+							<dd id="roEarth">–</dd>
+						</div>
+					</dl>
+					<div class="ro-bar" aria-hidden="true"><span id="roBar"></span></div>
+					<p class="ro-note" id="roNote" hidden>The two fields cancel here, so the needle has nothing to line up with.</p>
+				</div>
+
+				<p class="hud hint">Drag the compass or click to place it. Drag the magnet to rotate it.</p>
+			</section>
+
+			<aside class="panel" aria-label="Simulation settings">
+				<section class="group" aria-labelledby="hFlux">
+					<h2 id="hFlux">Show the flux with</h2>
+					<div class="seg" role="radiogroup" aria-labelledby="hFlux">
+						<button type="button" role="radio" data-mode="filings" aria-checked="true">Iron filings</button>
+						<button type="button" role="radio" data-mode="lines" aria-checked="false">Field lines</button>
+					</div>
+
+					<div data-mode-block="filings">
+						<div class="field">
+							<label for="filingDensity">Powder density</label>
+							<output for="filingDensity" data-out="filingDensity"></output>
+							<input type="range" id="filingDensity" data-key="filingDensity" min="10" max="100" step="1"/>
+						</div>
+						<div class="field">
+							<label for="filingSize">Grain size</label>
+							<output for="filingSize" data-out="filingSize"></output>
+							<input type="range" id="filingSize" data-key="filingSize" min="50" max="200" step="5"/>
+						</div>
+						<button type="button" class="btn btn-wide" id="sprinkleBtn">Sprinkle fresh filings</button>
+					</div>
+
+					<div data-mode-block="lines" hidden>
+						<div class="field">
+							<label for="lineDensity">Line density</label>
+							<output for="lineDensity" data-out="lineDensity"></output>
+							<input type="range" id="lineDensity" data-key="lineDensity" min="8" max="80" step="1"/>
+						</div>
+						<label class="toggle">
+							<span>Direction arrows</span>
+							<input type="checkbox" class="switch" data-key="showArrows"/>
+						</label>
+						<label class="toggle">
+							<span>Null points</span>
+							<input type="checkbox" class="switch" data-key="showNulls"/>
+						</label>
+						<label class="toggle">
+							<span>Colour the Earth’s field lines</span>
+							<input type="checkbox" class="switch" data-key="tintEarth"/>
+						</label>
+					</div>
+				</section>
+
+				<section class="group" aria-labelledby="hMagnet">
+					<h2 id="hMagnet">Bar magnet</h2>
+					<div class="field">
+						<label for="magnetStrength">Strength</label>
+						<output for="magnetStrength" data-out="magnetStrength"></output>
+						<input type="range" id="magnetStrength" data-key="magnetStrength" min="10" max="300" step="5"/>
+					</div>
+					<div class="field">
+						<label for="magnetLength">Length</label>
+						<output for="magnetLength" data-out="magnetLength"></output>
+						<input type="range" id="magnetLength" data-key="magnetLength" min="50" max="170" step="5"/>
+					</div>
+					<div class="field">
+						<label for="magnetAngle">North pole points to</label>
+						<output for="magnetAngle" data-out="magnetAngle"></output>
+						<input type="range" id="magnetAngle" data-key="magnetAngle" min="0" max="359" step="1"/>
+					</div>
+					<div class="chips" role="group" aria-label="Point the north pole">
+						<button type="button" class="chip" data-angle="0">North</button>
+						<button type="button" class="chip" data-angle="90">East</button>
+						<button type="button" class="chip" data-angle="180">South</button>
+						<button type="button" class="chip" data-angle="270">West</button>
+					</div>
+				</section>
+
+				<section class="group" aria-labelledby="hEarth">
+					<h2 id="hEarth">Earth’s field</h2>
+					<label class="toggle">
+						<span>Include the Earth’s field</span>
+						<input type="checkbox" class="switch" data-key="earthOn"/>
+					</label>
+					<div class="field" id="earthStrengthField">
+						<label for="earthStrength">Horizontal strength</label>
+						<output for="earthStrength" data-out="earthStrength"></output>
+						<input type="range" id="earthStrength" data-key="earthStrength" min="5" max="60" step="1"/>
+					</div>
+					<p class="note">It points to geographic north, at the top of the view.</p>
+				</section>
+
+				<section class="group" aria-labelledby="hCompass">
+					<h2 id="hCompass">Compass</h2>
+					<label class="toggle">
+						<span>Show the compass</span>
+						<input type="checkbox" class="switch" data-key="compassOn"/>
+					</label>
+					<div class="field" id="compassSizeField">
+						<label for="compassSize">Size</label>
+						<output for="compassSize" data-out="compassSize"></output>
+						<input type="range" id="compassSize" data-key="compassSize" min="16" max="64" step="1"/>
+					</div>
+					<label class="toggle" id="compassTraceToggle">
+						<span>Trace the field line it sits on</span>
+						<input type="checkbox" class="switch" data-key="compassTrace"/>
+					</label>
+					<button type="button" class="btn btn-wide" id="toNullBtn">Move it to a null point</button>
+					<p class="note" id="nullNote"></p>
+				</section>
+
+				<section class="group about" aria-labelledby="hAbout">
+					<h2 id="hAbout">About the model</h2>
+					<p>The magnet is a uniformly magnetised bar seen in cross-section. The Earth’s field is its horizontal part. The compass needle and every grain of powder line up with the resultant of the two, so near the magnet its field takes over, and far away the Earth’s does.</p>
+					<p>Field lines are spaced by equal amounts of flux, so where they crowd together the field is stronger. A null point is where the two fields are equal and opposite and cancel.</p>
+					<p>With the field view focused, <kbd>←</kbd> <kbd>↑</kbd> <kbd>→</kbd> <kbd>↓</kbd> move the compass (hold <kbd>Shift</kbd> for bigger steps) and <kbd>[</kbd> <kbd>]</kbd> rotate the magnet.</p>
+				</section>
+			</aside>
+		</main>
+
+		<noscript>
+			<p style="padding: 20px">This simulator needs JavaScript to run.</p>
+		</noscript>
+
+		<script>
+			(function () {
+				"use strict";
+
+				/* =========================================================
+				Constants and defaults
+				========================================================= */
+
+				const TAU = Math.PI * 2;
+				const DEG = Math.PI / 180;
+				const Q_REF = 84000; // Pole strength at 100 % (µT·unit). Puts the null points ≈270 units from the centre.
+				const BAR_LENGTH = 180; // World units at 100 % length.
+				const BAR_WIDTH = 46;
+				const WORLD_SPAN = 880; // World units that fit across the shorter side of the view.
+				const THEME_KEY = "mfs-theme";
+				const WINDS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+
+				const DEFAULTS = Object.freeze({
+					mode: "filings",
+					filingDensity: 60,
+					filingSize: 100,
+					lineDensity: 30,
+					showArrows: true,
+					showNulls: true,
+					tintEarth: true,
+					magnetStrength: 100,
+					magnetLength: 100,
+					magnetAngle: 0,
+					earthOn: true,
+					earthStrength: 30,
+					compassOn: true,
+					compassSize: 30,
+					compassTrace: false
+				});
+				const DEFAULT_COMPASS = Object.freeze({ x: -215, y: -150 });
+				const DEFAULT_SEED = 1873;
+
+				// What has to happen when each setting changes.
+				const EFFECT = {
+					mode: "rebuild",
+					filingDensity: "rebuild",
+					filingSize: "rebuild",
+					lineDensity: "rebuild",
+					showArrows: "redraw",
+					showNulls: "redraw",
+					tintEarth: "redraw",
+					magnetStrength: "rebuild",
+					magnetLength: "rebuild",
+					magnetAngle: "rebuild",
+					earthOn: "rebuild",
+					earthStrength: "rebuild",
+					compassOn: "ui",
+					compassSize: "ui",
+					compassTrace: "ui"
+				};
+
+				const FORMAT = {
+					filingDensity: v => v + "%",
+					filingSize: v => v + "%",
+					lineDensity: v => String(v),
+					magnetStrength: v => v + "%",
+					magnetLength: v => v + "%",
+					magnetAngle: v => v + "° " + windOf(v),
+					earthStrength: v => v + " µT",
+					compassSize: v => v + " px"
+				};
+
+				const state = Object.assign({}, DEFAULTS);
+				let seed = DEFAULT_SEED;
+
+				/* =========================================================
+				Small helpers
+				========================================================= */
+
+				function clamp(v, lo, hi) {
+					return v < lo ? lo : v > hi ? hi : v;
+				}
+
+				function mulberry32(a) {
+					return function () {
+						a |= 0;
+						a = (a + 0x6d2b79f5) | 0;
+						let t = Math.imul(a ^ (a >>> 15), 1 | a);
+						t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+						return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+					};
+				}
+
+				function wrapAngle(a) {
+					a = (a + Math.PI) % TAU;
+					if (a < 0) {
+						a += TAU;
+					}
+					return a - Math.PI;
+				}
+
+				function windOf(bearing) {
+					return WINDS[Math.round(bearing / 22.5) % 16];
+				}
+
+				function fmtB(v) {
+					if (v >= 1000) {
+						return (v / 1000).toFixed(v >= 10000 ? 1 : 2) + " mT";
+					}
+					if (v >= 100) {
+						return v.toFixed(0) + " µT";
+					}
+					if (v >= 10) {
+						return v.toFixed(1) + " µT";
+					}
+					return v.toFixed(2) + " µT";
+				}
+
+				/* =========================================================
+				Persistent storage for the theme.
+				Uses Claude's artifact storage when it exists, otherwise the
+				browser's localStorage (for a downloaded copy of this file).
+				========================================================= */
+
+				const Store = {
+					artifact() {
+						return !!(window.storage && typeof window.storage.get === "function");
+					},
+					async get(key) {
+						if (this.artifact()) {
+							try {
+								const r = await window.storage.get(key, false);
+								return r && typeof r.value === "string" ? r.value : null;
+							} catch (e) {
+								return null;
+							}
+						}
+						try {
+							return window.localStorage.getItem(key);
+						} catch (e) {
+							return null;
+						}
+					},
+					async set(key, value) {
+						if (this.artifact()) {
+							try {
+								await window.storage.set(key, value, false);
+							} catch (e) {
+								// Storage is optional; the theme still applies for this visit.
+							}
+							return;
+						}
+						try {
+							window.localStorage.setItem(key, value);
+						} catch (e) {
+							// Private browsing or blocked storage: ignore.
+						}
+					},
+					async remove(key) {
+						if (this.artifact()) {
+							try {
+								await window.storage.delete(key, false);
+							} catch (e) {
+								// Nothing stored yet.
+							}
+							return;
+						}
+						try {
+							window.localStorage.removeItem(key);
+						} catch (e) {
+							// Ignore.
+						}
+					}
+				};
+
+				/* =========================================================
+				Physics: a 2-D bar magnet plus a uniform Earth field.
+
+				Each end face of the bar carries a uniform sheet of magnetic
+				"charge" (+ on the north face, − on the south face). In 2-D this
+				gives closed forms for both the field B and the stream function ψ,
+				with B = (∂ψ/∂y, −∂ψ/∂x). Field lines are the contours of ψ, so
+				drawing them at equal steps of ψ spaces them by equal flux.
+
+				World units: x to the right, y downwards, north is −y.
+				========================================================= */
+
+				function faceIntegral(t, v) {
+					return t * Math.atan2(t, v) - 0.5 * v * Math.log(t * t + v * v + 1e-30);
+				}
+
+				const Field = {
+					mx: 0,
+					my: -1, // unit vector from the S pole to the N pole
+					ux: -1,
+					uy: 0, // unit vector across the bar
+					h: BAR_WIDTH / 2,
+					hl: BAR_LENGTH / 2,
+					Q: Q_REF,
+					k2: 0,
+					k4: 0,
+					E: 0,
+					ey: 0,
+
+					set(angleDeg, length, width, Q, earth) {
+						const th = angleDeg * DEG;
+						this.mx = Math.sin(th);
+						this.my = -Math.cos(th);
+						this.ux = this.my;
+						this.uy = -this.mx;
+						this.hl = length / 2;
+						this.h = width / 2;
+						this.Q = Q;
+						const lambda = Q / width;
+						this.k2 = lambda / TAU;
+						this.k4 = lambda / (2 * TAU);
+						this.E = earth;
+						this.ey = -earth;
+					},
+
+					magnet(x, y, out) {
+						const u = x * this.ux + y * this.uy;
+						const v = x * this.mx + y * this.my;
+						const h = this.h;
+						const vn = v - this.hl;
+						const vs = v + this.hl;
+						const up = u + h;
+						const um = u - h;
+						const up2 = up * up;
+						const um2 = um * um;
+						const vn2 = vn * vn;
+						const vs2 = vs * vs;
+						const bu = this.k4 * Math.log(((up2 + vn2) * (um2 + vs2) + 1e-30) / ((um2 + vn2) * (up2 + vs2) + 1e-30));
+						const uh = u * u - h * h;
+						const bv = this.k2 * (Math.atan2(2 * h * vn, uh + vn2) - Math.atan2(2 * h * vs, uh + vs2));
+						out.x = bu * this.ux + bv * this.mx;
+						out.y = bu * this.uy + bv * this.my;
+						return out;
+					},
+
+					total(x, y, out) {
+						this.magnet(x, y, out);
+						out.y += this.ey;
+						return out;
+					},
+
+					psi(x, y) {
+						const u = x * this.ux + y * this.uy;
+						const v = x * this.mx + y * this.my;
+						const h = this.h;
+						const a = v - this.hl;
+						const b = v + this.hl;
+						return this.k2 * (faceIntegral(h - u, a) - faceIntegral(-h - u, a) - faceIntegral(h - u, b) + faceIntegral(-h - u, b)) + this.E * x;
+					},
+
+					inside(x, y, margin) {
+						const u = x * this.ux + y * this.uy;
+						const v = x * this.mx + y * this.my;
+						return Math.abs(u) < this.h + margin && Math.abs(v) < this.hl + margin;
+					},
+
+					dist(x, y) {
+						const u = x * this.ux + y * this.uy;
+						const v = x * this.mx + y * this.my;
+						const du = Math.abs(u) - this.h;
+						const dv = Math.abs(v) - this.hl;
+						return Math.sqrt((du > 0 ? du * du : 0) + (dv > 0 ? dv * dv : 0));
+					}
+				};
+
+				function configureField() {
+					Field.set(state.magnetAngle, (BAR_LENGTH * state.magnetLength) / 100, BAR_WIDTH, (Q_REF * state.magnetStrength) / 100, state.earthOn ? state.earthStrength : 0);
+				}
+
+				/* ---------- Null points: where the resultant field is zero ---------- */
+
+				const jb = { x: 0, y: 0 };
+				const jc = { x: 0, y: 0 };
+
+				function jacobian(x, y, J) {
+					const d = 0.01;
+					Field.total(x + d, y, jb);
+					Field.total(x - d, y, jc);
+					J[0] = (jb.x - jc.x) / (2 * d);
+					J[2] = (jb.y - jc.y) / (2 * d);
+					Field.total(x, y + d, jb);
+					Field.total(x, y - d, jc);
+					J[1] = (jb.x - jc.x) / (2 * d);
+					J[3] = (jb.y - jc.y) / (2 * d);
+					return J;
+				}
+
+				function findNulls() {
+					const found = [];
+					if (!(Field.E > 0)) {
+						return found;
+					}
+					const step = 20;
+					const pad = 120;
+					const x0 = view.x0 - pad;
+					const y0 = view.y0 - pad;
+					const nx = Math.ceil((view.x1 - view.x0 + 2 * pad) / step) + 1;
+					const ny = Math.ceil((view.y1 - view.y0 + 2 * pad) / step) + 1;
+					const mag = new Float64Array(nx * ny);
+					const b = { x: 0, y: 0 };
+					const J = [0, 0, 0, 0];
+
+					for (let j = 0; j < ny; j++) {
+						for (let i = 0; i < nx; i++) {
+							const x = x0 + i * step;
+							const y = y0 + j * step;
+							if (Field.inside(x, y, 2)) {
+								mag[j * nx + i] = Infinity;
+								continue;
+							}
+							Field.total(x, y, b);
+							mag[j * nx + i] = b.x * b.x + b.y * b.y;
+						}
+					}
+
+					for (let j = 1; j < ny - 1; j++) {
+						for (let i = 1; i < nx - 1; i++) {
+							const c = mag[j * nx + i];
+							if (c === Infinity) {
+								continue;
+							}
+							let isMin = true;
+							for (let dj = -1; dj <= 1 && isMin; dj++) {
+								for (let di = -1; di <= 1; di++) {
+									if ((di || dj) && mag[(j + dj) * nx + i + di] < c) {
+										isMin = false;
+										break;
+									}
+								}
+							}
+							let x = x0 + i * step;
+							let y = y0 + j * step;
+							// Local minima are good seeds; near the bar the grid is too coarse, so try every node there.
+							if (!isMin && Field.dist(x, y) > 45) {
+								continue;
+							}
+							// Newton's method on B(x, y) = 0.
+							for (let it = 0; it < 50; it++) {
+								Field.total(x, y, b);
+								jacobian(x, y, J);
+								const det = J[0] * J[3] - J[1] * J[2];
+								if (!isFinite(det) || Math.abs(det) < 1e-16) {
+									break;
+								}
+								let dx = -(J[3] * b.x - J[1] * b.y) / det;
+								let dy = -(-J[2] * b.x + J[0] * b.y) / det;
+								const dl = Math.sqrt(dx * dx + dy * dy);
+								if (dl > 40) {
+									dx *= 40 / dl;
+									dy *= 40 / dl;
+								}
+								x += dx;
+								y += dy;
+								if (dl < 1e-7) {
+									break;
+								}
+							}
+							Field.total(x, y, b);
+							if (!(Math.sqrt(b.x * b.x + b.y * b.y) < 1e-6 * Field.E)) {
+								continue;
+							}
+							if (Field.inside(x, y, 0.5)) {
+								continue;
+							}
+							if (x < view.x0 - pad || x > view.x1 + pad || y < view.y0 - pad || y > view.y1 + pad) {
+								continue;
+							}
+							let duplicate = false;
+							for (const n of found) {
+								if (Math.abs(n.x - x) < 1 && Math.abs(n.y - y) < 1) {
+									duplicate = true;
+									break;
+								}
+							}
+							if (duplicate) {
+								continue;
+							}
+							// The Jacobian at a null is symmetric and trace-free: field lines leave along
+							// the eigenvector (ex, ey) and arrive along the one perpendicular to it.
+							jacobian(x, y, J);
+							const a = (J[0] - J[3]) / 2;
+							const s = (J[1] + J[2]) / 2;
+							const mu = Math.sqrt(a * a + s * s);
+							let ex;
+							let ey;
+							if (a >= 0) {
+								ex = mu + a;
+								ey = s;
+							} else {
+								ex = s;
+								ey = mu - a;
+							}
+							const el = Math.sqrt(ex * ex + ey * ey) || 1;
+							found.push({ x, y, ex: ex / el, ey: ey / el, psi: Field.psi(x, y) });
+						}
+					}
+					return found;
+				}
+
+				/* ---------- Field line tracer (RK4 along the unit field, kept on its ψ contour) ---------- */
+
+				const Tracer = (function () {
+					const b = { x: 0, y: 0 };
+					const k1 = [0, 0];
+					const k2 = [0, 0];
+					const k3 = [0, 0];
+					const k4 = [0, 0];
+					let nearNull = Infinity;
+
+					function stepSize(x, y) {
+						let ds = 0.35 + 0.045 * Field.dist(x, y);
+						if (ds > 6) {
+							ds = 6;
+						}
+						nearNull = Infinity;
+						for (let i = 0; i < nulls.length; i++) {
+							const dx = x - nulls[i].x;
+							const dy = y - nulls[i].y;
+							const dn = Math.sqrt(dx * dx + dy * dy);
+							if (dn < nearNull) {
+								nearNull = dn;
+							}
+							const lim = 0.25 * dn + 0.2;
+							if (ds > lim) {
+								ds = lim;
+							}
+						}
+						return ds;
+					}
+
+					function dir(x, y, sense, k) {
+						Field.total(x, y, b);
+						const m = Math.sqrt(b.x * b.x + b.y * b.y);
+						if (m > 0) {
+							k[0] = (sense * b.x) / m;
+							k[1] = (sense * b.y) / m;
+						} else {
+							k[0] = 0;
+							k[1] = 0;
+						}
+					}
+
+					// Appends points to pts. Returns how the line ended: 'body', 'edge', 'null' or 'max'.
+					function trace(x, y, sense, level, pts, box) {
+						const tiny = 1e-5 * Math.max(Field.E, 1);
+						let travelled = 0;
+						for (let i = 0; i < 6000; i++) {
+							const ds = stepSize(x, y);
+							if (nearNull < 0.6 && travelled > 3) {
+								return "null";
+							}
+							travelled += ds;
+							dir(x, y, sense, k1);
+							const px = x + k1[0] * ds;
+							const py = y + k1[1] * ds;
+							if (Field.inside(px, py, 0)) {
+								pts.push(px, py);
+								return "body";
+							}
+							dir(x + (k1[0] * ds) / 2, y + (k1[1] * ds) / 2, sense, k2);
+							dir(x + (k2[0] * ds) / 2, y + (k2[1] * ds) / 2, sense, k3);
+							dir(x + k3[0] * ds, y + k3[1] * ds, sense, k4);
+							let nx = x + ((k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]) * ds) / 6;
+							let ny = y + ((k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]) * ds) / 6;
+							if (Field.inside(nx, ny, 0)) {
+								pts.push(nx, ny);
+								return "body";
+							}
+							Field.total(nx, ny, b);
+							const g2 = b.x * b.x + b.y * b.y;
+							if (level !== null && g2 > 1e-18) {
+								// One Newton step back onto the contour ψ = level (∇ψ = (−By, Bx)).
+								const err = Field.psi(nx, ny) - level;
+								let cx = (err * b.y) / g2;
+								let cy = (-err * b.x) / g2;
+								const cl = Math.sqrt(cx * cx + cy * cy);
+								const lim = 0.5 * ds;
+								if (cl > lim) {
+									cx *= lim / cl;
+									cy *= lim / cl;
+								}
+								nx += cx;
+								ny += cy;
+							}
+							x = nx;
+							y = ny;
+							pts.push(x, y);
+							if (x < box.x0 || x > box.x1 || y < box.y0 || y > box.y1) {
+								return "edge";
+							}
+							if (g2 < tiny * tiny) {
+								return "null";
+							}
+						}
+						return "max";
+					}
+
+					return { trace };
+				})();
+
+				// Walks a polyline path, finds every crossing of a ψ level where the field
+				// points along the path's normal, and calls back with the crossing point.
+				function seedsAlong(path, dpsi, cb) {
+					const b = { x: 0, y: 0 };
+					for (const seg of path) {
+						const [x0, y0, x1, y1, nx, ny, spacing] = seg;
+						const n = Math.max(1, Math.ceil(Math.sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0)) / spacing));
+						let px = x0;
+						let py = y0;
+						let pp = Field.psi(px, py);
+						for (let i = 1; i <= n; i++) {
+							const t = i / n;
+							const qx = x0 + (x1 - x0) * t;
+							const qy = y0 + (y1 - y0) * t;
+							const qp = Field.psi(qx, qy);
+							if (qp !== pp) {
+								const lo = Math.min(pp, qp);
+								const hi = Math.max(pp, qp);
+								for (let j = Math.ceil(lo / dpsi); j * dpsi < hi; j++) {
+									const c = j * dpsi;
+									const s = (c - pp) / (qp - pp);
+									const sx = px + (qx - px) * s;
+									const sy = py + (qy - py) * s;
+									Field.total(sx, sy, b);
+									if (b.x * nx + b.y * ny > 0) {
+										cb(sx, sy, c, nx, ny);
+									}
+								}
+							}
+							px = qx;
+							py = qy;
+							pp = qp;
+						}
+					}
+				}
+
+				/* =========================================================
+				View, canvases and colours
+				========================================================= */
+
+				const stage = document.getElementById("stage");
+				const fieldCanvas = document.getElementById("fieldCanvas");
+				const uiCanvas = document.getElementById("uiCanvas");
+				const fctx = fieldCanvas.getContext("2d");
+				const uctx = uiCanvas.getContext("2d");
+
+				const view = { w: 0, h: 0, dpr: 1, k: 1, cx: 0, cy: 0, x0: -440, x1: 440, y0: -360, y1: 360 };
+				let P = {};
+				const fonts = { display: "system-ui, sans-serif" };
+
+				const mqDark = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+				const mqMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+				let reducedMotion = !!(mqMotion && mqMotion.matches);
+
+				function readPalette() {
+					const cs = getComputedStyle(document.documentElement);
+					const g = name => cs.getPropertyValue(name).trim();
+					P = {
+						dark: document.documentElement.getAttribute("data-theme") === "dark",
+						stage: g("--stage"),
+						stageFilings: g("--stage-filings"),
+						ink: g("--ink"),
+						muted: g("--muted"),
+						fieldInk: g("--field-ink"),
+						earth: g("--earth"),
+						nullc: g("--null"),
+						north: g("--north"),
+						south: g("--south"),
+						grain: g("--grain")
+					};
+					fonts.display = g("--font-display") || fonts.display;
+				}
+
+				function toScreenX(x) {
+					return view.cx + x * view.k;
+				}
+
+				function toScreenY(y) {
+					return view.cy + y * view.k;
+				}
+
+				function toWorld(p) {
+					return { x: (p.x - view.cx) / view.k, y: (p.y - view.cy) / view.k };
+				}
+
+				function inView(x, y, marginPx) {
+					const m = (marginPx || 0) / view.k;
+					return x > view.x0 + m && x < view.x1 - m && y > view.y0 + m && y < view.y1 - m;
+				}
+
+				function resize() {
+					const r = stage.getBoundingClientRect();
+					const w = Math.max(1, Math.round(r.width));
+					const h = Math.max(1, Math.round(r.height));
+					const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+					if (w === view.w && h === view.h && dpr === view.dpr) {
+						return;
+					}
+					view.w = w;
+					view.h = h;
+					view.dpr = dpr;
+					for (const c of [fieldCanvas, uiCanvas]) {
+						c.width = Math.round(w * dpr);
+						c.height = Math.round(h * dpr);
+						c.style.width = w + "px";
+						c.style.height = h + "px";
+					}
+					view.k = clamp(Math.min(w, h * 1.2) / WORLD_SPAN, 0.38, 1.8);
+					view.cx = w / 2;
+					view.cy = h / 2;
+					view.x0 = -view.cx / view.k;
+					view.x1 = (w - view.cx) / view.k;
+					view.y0 = -view.cy / view.k;
+					view.y1 = (h - view.cy) / view.k;
+					requestField("rebuild");
+				}
+
+				/* =========================================================
+				Building the picture
+				========================================================= */
+
+				let nulls = [];
+				let lineGeom = null;
+				let filingGeom = null;
+
+				function rebuild() {
+					configureField();
+					clampCompass();
+					nulls = findNulls();
+					if (state.mode === "lines") {
+						lineGeom = buildLines();
+						filingGeom = null;
+					} else {
+						filingGeom = buildFilings();
+						lineGeom = null;
+					}
+					traceDirty = true;
+					updateNullUI();
+					updateLegend();
+				}
+
+				function levelSpacing() {
+					let d = Q_REF / (2 * state.lineDensity);
+					const faceLines = Field.Q / (2 * d);
+					if (faceLines > 220) {
+						d = Field.Q / (2 * 220);
+					} else if (faceLines < 6) {
+						d = Field.Q / (2 * 6);
+					}
+					return d;
+				}
+
+				function polylineToScreen(pts) {
+					const k = view.k;
+					const cx = view.cx;
+					const cy = view.cy;
+					const out = [];
+					let lx = cx + pts[0] * k;
+					let ly = cy + pts[1] * k;
+					out.push(lx, ly);
+					const n = pts.length;
+					for (let i = 2; i < n; i += 2) {
+						const x = cx + pts[i] * k;
+						const y = cy + pts[i + 1] * k;
+						const dx = x - lx;
+						const dy = y - ly;
+						if (dx * dx + dy * dy < 0.36 && i < n - 2) {
+							continue;
+						}
+						out.push(x, y);
+						lx = x;
+						ly = y;
+					}
+					return new Float32Array(out);
+				}
+
+				const arrowProbe = { x: 0, y: 0 };
+
+				function arrowFits(x, y, dpsi) {
+					if (x < 10 || y < 10 || x > view.w - 10 || y > view.h - 10) {
+						return false;
+					}
+					const wx = (x - view.cx) / view.k;
+					const wy = (y - view.cy) / view.k;
+					if (Field.dist(wx, wy) * view.k < 16) {
+						return false;
+					}
+					for (const n of nulls) {
+						const dx = (n.x - wx) * view.k;
+						const dy = (n.y - wy) * view.k;
+						if (dx * dx + dy * dy < 22 * 22) {
+							return false;
+						}
+					}
+					// Skip arrows where neighbouring lines are packed tighter than ~9 px.
+					Field.total(wx, wy, arrowProbe);
+					const m = Math.sqrt(arrowProbe.x * arrowProbe.x + arrowProbe.y * arrowProbe.y);
+					return m > 0 && (dpsi / m) * view.k > 9;
+				}
+
+				function addArrows(scr, sense, phase, dpsi, list) {
+					const spacing = 150;
+					let next = spacing * (0.3 + 0.55 * phase);
+					let acc = 0;
+					for (let i = 2; i < scr.length; i += 2) {
+						const dx = scr[i] - scr[i - 2];
+						const dy = scr[i + 1] - scr[i - 1];
+						const seg = Math.sqrt(dx * dx + dy * dy);
+						while (seg > 0 && acc + seg >= next) {
+							const t = (next - acc) / seg;
+							const x = scr[i - 2] + dx * t;
+							const y = scr[i - 1] + dy * t;
+							if (arrowFits(x, y, dpsi)) {
+								list.push(x, y, Math.atan2(dy, dx) + (sense < 0 ? Math.PI : 0));
+							}
+							next += spacing;
+						}
+						acc += seg;
+					}
+				}
+
+				function buildLines() {
+					const dpsi = levelSpacing();
+					const box = { x0: view.x0, x1: view.x1, y0: view.y0, y1: view.y1 };
+					const wide = { x0: view.x0 - 140, x1: view.x1 + 140, y0: view.y0 - 140, y1: view.y1 + 140 };
+					const geom = {
+						magnet: [],
+						earth: [],
+						sep: [],
+						arrows: { magnet: [], earth: [], sep: [] }
+					};
+					let count = 0;
+					const keep = (pts, kind, sense) => {
+						if (pts.length < 4) {
+							return;
+						}
+						const scr = polylineToScreen(pts);
+						geom[kind].push(scr);
+						addArrows(scr, sense, (count++ * 0.6180339887) % 1, dpsi, geom.arrows[kind]);
+					};
+
+					// 1. Lines leaving the bar: seeds on a loop hugging its outline.
+					const d0 = 0.75;
+					const H = Field.h + d0;
+					const HL = Field.hl + d0;
+					const toW = (u, v) => [u * Field.ux + v * Field.mx, u * Field.uy + v * Field.my];
+					const bodyPath = [];
+					for (const e of [
+						[-H, HL, H, HL, 0, 1, 0.12],
+						[H, HL, H, -HL, 1, 0, 0.3],
+						[H, -HL, -H, -HL, 0, -1, 0.12],
+						[-H, -HL, -H, HL, -1, 0, 0.3]
+					]) {
+						const a = toW(e[0], e[1]);
+						const b = toW(e[2], e[3]);
+						const n = toW(e[4], e[5]);
+						bodyPath.push([a[0], a[1], b[0], b[1], n[0], n[1], e[6]]);
+					}
+					seedsAlong(bodyPath, dpsi, (x, y, c, nx, ny) => {
+						const pts = [x - nx * d0, y - ny * d0, x, y];
+						Tracer.trace(x, y, 1, c, pts, box);
+						keep(pts, "magnet", 1);
+					});
+
+					// 2. Lines entering the view across its edges.
+					const e = 0.5;
+					const X0 = view.x0 + e;
+					const X1 = view.x1 - e;
+					const Y0 = view.y0 + e;
+					const Y1 = view.y1 - e;
+					const edgePath = [
+						[X0, Y0, X1, Y0, 0, 1, 0.75],
+						[X1, Y0, X1, Y1, -1, 0, 0.75],
+						[X1, Y1, X0, Y1, 0, -1, 0.75],
+						[X0, Y1, X0, Y0, 1, 0, 0.75]
+					];
+					seedsAlong(edgePath, dpsi, (x, y, c) => {
+						if (Field.inside(x, y, 1)) {
+							return;
+						}
+						const pts = [x, y];
+						const end = Tracer.trace(x, y, 1, c, pts, box);
+						keep(pts, end === "body" || !(Field.E > 0) ? "magnet" : "earth", 1);
+					});
+
+					// 3. The four field lines that meet at every null point.
+					for (const n of nulls) {
+						const branches = [
+							[n.ex, n.ey, 1],
+							[-n.ex, -n.ey, 1],
+							[-n.ey, n.ex, -1],
+							[n.ey, -n.ex, -1]
+						];
+						for (const [dx, dy, sense] of branches) {
+							const pts = [n.x, n.y];
+							Tracer.trace(n.x + dx * 1.2, n.y + dy * 1.2, sense, n.psi, pts, wide);
+							keep(pts, "sep", sense);
+						}
+					}
+					return geom;
+				}
+
+				function buildFilings() {
+					const rng = mulberry32(seed);
+					const w = view.w;
+					const h = view.h;
+					const k = view.k;
+					const cx = view.cx;
+					const cy = view.cy;
+					const d = state.filingDensity / 100;
+					const target = Math.min(80000, Math.round(w * h * (0.005 + 0.004 * d + 0.05 * d * d)));
+					const len0 = (4.2 * state.filingSize) / 100;
+					const bref = Field.E > 0 ? Field.E : 30;
+					const margin = 1.5 / k;
+					const seg = new Float32Array(target * 4);
+					const cls = new Uint8Array(target);
+					const b = { x: 0, y: 0 };
+					let n = 0;
+					let tries = 0;
+
+					while (n < target && tries < target * 10) {
+						tries++;
+						let sx = rng() * w;
+						let sy = rng() * h;
+						let wx = (sx - cx) / k;
+						let wy = (sy - cy) / k;
+						if (Field.inside(wx, wy, margin)) {
+							continue;
+						}
+						Field.total(wx, wy, b);
+						let s = Math.sqrt(b.x * b.x + b.y * b.y) / bref;
+						// Powder gathers where the field is strong.
+						if (rng() > Math.min(1, 0.3 + 0.22 * Math.log2(1 + s))) {
+							continue;
+						}
+						// Grains link into chains along the field; longer chains in stronger fields.
+						let links = 1 + Math.floor(rng() * (1 + Math.min(9, 2.6 * Math.log2(1 + s))));
+						const sense = rng() < 0.5 ? -1 : 1;
+						const tone = rng();
+						while (links-- > 0 && n < target) {
+							const align = (s * s) / (s * s + 0.05);
+							const fa = Math.atan2(b.y, b.x);
+							const half = 0.08 + (1 - align) * (Math.PI / 2 - 0.08);
+							const ang = fa + (rng() * 2 - 1) * half;
+							const len = len0 * (0.5 + rng() * 0.85) * (0.8 + 0.3 * align);
+							const ux = Math.cos(ang) * len * 0.5;
+							const uy = Math.sin(ang) * len * 0.5;
+							const o = n * 4;
+							seg[o] = sx - ux;
+							seg[o + 1] = sy - uy;
+							seg[o + 2] = sx + ux;
+							seg[o + 3] = sy + uy;
+							const t = Math.min(2, Math.floor(tone * 1.6 + align * 1.1 + rng() * 0.5));
+							cls[n] = t * 2 + (rng() < 0.28 ? 1 : 0);
+							n++;
+							const adv = len + len0 * (0.12 + rng() * 0.3);
+							sx += Math.cos(fa) * adv * sense + (rng() - 0.5) * 0.8;
+							sy += Math.sin(fa) * adv * sense + (rng() - 0.5) * 0.8;
+							if (sx < -4 || sy < -4 || sx > w + 4 || sy > h + 4) {
+								break;
+							}
+							wx = (sx - cx) / k;
+							wy = (sy - cy) / k;
+							if (Field.inside(wx, wy, margin)) {
+								break;
+							}
+							Field.total(wx, wy, b);
+							s = Math.sqrt(b.x * b.x + b.y * b.y) / bref;
+						}
+					}
+
+					// Group grains by tone and width so each group is a single stroke.
+					const counts = new Uint32Array(6);
+					for (let i = 0; i < n; i++) {
+						counts[cls[i]]++;
+					}
+					const buckets = [];
+					for (let c = 0; c < 6; c++) {
+						buckets.push(new Float32Array(counts[c] * 4));
+					}
+					const fill = new Uint32Array(6);
+					for (let i = 0; i < n; i++) {
+						const c = cls[i];
+						const o = fill[c];
+						const src = i * 4;
+						const dst = buckets[c];
+						dst[o] = seg[src];
+						dst[o + 1] = seg[src + 1];
+						dst[o + 2] = seg[src + 2];
+						dst[o + 3] = seg[src + 3];
+						fill[c] = o + 4;
+					}
+					return { buckets, count: n };
+				}
+
+				/* =========================================================
+				Drawing the field layer
+				========================================================= */
+
+				let paperPattern = null;
+				let paperTheme = "";
+
+				function paper(ctx) {
+					const key = P.dark ? "dark" : "light";
+					if (paperPattern && paperTheme === key) {
+						return paperPattern;
+					}
+					const c = document.createElement("canvas");
+					c.width = 192;
+					c.height = 192;
+					const g = c.getContext("2d");
+					const rng = mulberry32(77);
+					for (let i = 0; i < 2600; i++) {
+						g.fillStyle = (P.dark ? "rgba(255,255,255," : "rgba(0,0,0,") + (rng() * 0.05).toFixed(3) + ")";
+						g.fillRect(rng() * 192, rng() * 192, 1, 1);
+					}
+					paperPattern = ctx.createPattern(c, "repeat");
+					paperTheme = key;
+					return paperPattern;
+				}
+
+				function strokeSet(ctx, list, color, width, alpha) {
+					if (!list.length) {
+						return;
+					}
+					ctx.beginPath();
+					for (const p of list) {
+						ctx.moveTo(p[0], p[1]);
+						for (let i = 2; i < p.length; i += 2) {
+							ctx.lineTo(p[i], p[i + 1]);
+						}
+					}
+					ctx.globalAlpha = alpha;
+					ctx.strokeStyle = color;
+					ctx.lineWidth = width;
+					ctx.stroke();
+				}
+
+				function fillArrows(ctx, list, color, alpha, size) {
+					if (!list.length) {
+						return;
+					}
+					ctx.beginPath();
+					for (let i = 0; i < list.length; i += 3) {
+						const x = list[i];
+						const y = list[i + 1];
+						const c = Math.cos(list[i + 2]);
+						const s = Math.sin(list[i + 2]);
+						ctx.moveTo(x + c * size, y + s * size);
+						ctx.lineTo(x - c * size * 0.8 - s * size * 0.72, y - s * size * 0.8 + c * size * 0.72);
+						ctx.lineTo(x - c * size * 0.35, y - s * size * 0.35);
+						ctx.lineTo(x - c * size * 0.8 + s * size * 0.72, y - s * size * 0.8 - c * size * 0.72);
+						ctx.closePath();
+					}
+					ctx.globalAlpha = alpha;
+					ctx.fillStyle = color;
+					ctx.fill();
+				}
+
+				function drawLines(ctx) {
+					const g = lineGeom;
+					if (!g) {
+						return;
+					}
+					ctx.lineJoin = "round";
+					ctx.lineCap = "round";
+					const earthColour = state.tintEarth ? P.earth : P.fieldInk;
+					const lineAlpha = P.dark ? 0.74 : 0.8;
+					strokeSet(ctx, g.earth, earthColour, 1, lineAlpha);
+					strokeSet(ctx, g.magnet, P.fieldInk, 1, lineAlpha);
+					if (state.showNulls) {
+						strokeSet(ctx, g.sep, P.nullc, 1.7, 0.95);
+					}
+					if (state.showArrows) {
+						fillArrows(ctx, g.arrows.earth, earthColour, 0.95, 4.6);
+						fillArrows(ctx, g.arrows.magnet, P.fieldInk, 0.95, 4.6);
+						if (state.showNulls) {
+							fillArrows(ctx, g.arrows.sep, P.nullc, 1, 5.2);
+						}
+					}
+					ctx.globalAlpha = 1;
+				}
+
+				function drawFilings(ctx) {
+					const g = filingGeom;
+					if (!g) {
+						return;
+					}
+					ctx.lineCap = "round";
+					ctx.strokeStyle = P.grain;
+					const alphas = P.dark ? [0.3, 0.52, 0.82] : [0.34, 0.58, 0.9];
+					const widths = [0.8, 1.2];
+					for (let c = 0; c < 6; c++) {
+						const arr = g.buckets[c];
+						if (!arr.length) {
+							continue;
+						}
+						ctx.beginPath();
+						for (let i = 0; i < arr.length; i += 4) {
+							ctx.moveTo(arr[i], arr[i + 1]);
+							ctx.lineTo(arr[i + 2], arr[i + 3]);
+						}
+						ctx.globalAlpha = alphas[c >> 1];
+						ctx.lineWidth = widths[c & 1];
+						ctx.stroke();
+					}
+					ctx.globalAlpha = 1;
+				}
+
+				function haloText(ctx, text, x, y, colour) {
+					ctx.lineJoin = "round";
+					ctx.lineWidth = 4;
+					ctx.strokeStyle = state.mode === "lines" ? P.stage : P.stageFilings;
+					ctx.strokeText(text, x, y);
+					ctx.fillStyle = colour;
+					ctx.fillText(text, x, y);
+				}
+
+				function drawNullMarkers(ctx) {
+					ctx.globalAlpha = 1;
+					ctx.font = "600 12px " + fonts.display;
+					ctx.textAlign = "center";
+					ctx.textBaseline = "middle";
+					for (const n of nulls) {
+						if (!inView(n.x, n.y, 2)) {
+							continue;
+						}
+						const x = toScreenX(n.x);
+						const y = toScreenY(n.y);
+						ctx.beginPath();
+						ctx.arc(x, y, 6.5, 0, TAU);
+						ctx.fillStyle = P.stage;
+						ctx.fill();
+						ctx.lineWidth = 2;
+						ctx.strokeStyle = P.nullc;
+						ctx.stroke();
+						ctx.beginPath();
+						ctx.moveTo(x - 3.1, y - 3.1);
+						ctx.lineTo(x + 3.1, y + 3.1);
+						ctx.moveTo(x + 3.1, y - 3.1);
+						ctx.lineTo(x - 3.1, y + 3.1);
+						ctx.lineWidth = 1.6;
+						ctx.stroke();
+
+						// Put the label in the gap between the crossing lines, on the side away from the magnet.
+						const len = Math.sqrt(n.x * n.x + n.y * n.y) || 1;
+						const ox = n.x / len;
+						const oy = n.y / len;
+						const gaps = [
+							[n.ex - n.ey, n.ey + n.ex],
+							[n.ex + n.ey, n.ey - n.ex],
+							[-n.ex + n.ey, -n.ey - n.ex],
+							[-n.ex - n.ey, -n.ey + n.ex]
+						];
+						let best = gaps[0];
+						let bestDot = -Infinity;
+						for (const gp of gaps) {
+							const dot = gp[0] * ox + gp[1] * oy;
+							if (dot > bestDot) {
+								bestDot = dot;
+								best = gp;
+							}
+						}
+						const gl = Math.sqrt(best[0] * best[0] + best[1] * best[1]) || 1;
+						let lx = x + (best[0] / gl) * 34;
+						let ly = y + (best[1] / gl) * 26;
+						lx = clamp(lx, 40, view.w - 40);
+						ly = clamp(ly, 12, view.h - 12);
+						haloText(ctx, "Null point", lx, ly, P.nullc);
+					}
+				}
+
+				function roundRectPath(ctx, x, y, w, h, r) {
+					ctx.beginPath();
+					ctx.moveTo(x + r, y);
+					ctx.lineTo(x + w - r, y);
+					ctx.arcTo(x + w, y, x + w, y + r, r);
+					ctx.lineTo(x + w, y + h - r);
+					ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+					ctx.lineTo(x + r, y + h);
+					ctx.arcTo(x, y + h, x, y + h - r, r);
+					ctx.lineTo(x, y + r);
+					ctx.arcTo(x, y, x + r, y, r);
+					ctx.closePath();
+				}
+
+				function drawMagnet(ctx) {
+					const k = view.k;
+					const L = Field.hl * 2 * k;
+					const W = Field.h * 2 * k;
+					const r = Math.min(4, W * 0.12);
+					ctx.save();
+					ctx.translate(view.cx, view.cy);
+					ctx.rotate(Math.atan2(Field.my, Field.mx));
+					ctx.globalAlpha = 1;
+					ctx.shadowColor = P.dark ? "rgba(0, 0, 0, 0.55)" : "rgba(16, 26, 40, 0.28)";
+					ctx.shadowBlur = 12 * view.dpr;
+					ctx.shadowOffsetY = 4 * view.dpr;
+					roundRectPath(ctx, -L / 2, -W / 2, L, W, r);
+					ctx.fillStyle = P.south;
+					ctx.fill();
+					ctx.shadowColor = "transparent";
+					ctx.save();
+					ctx.clip();
+					ctx.fillStyle = P.north;
+					ctx.fillRect(0, -W / 2, L / 2 + 1, W);
+					const sheen = ctx.createLinearGradient(0, -W / 2, 0, W / 2);
+					sheen.addColorStop(0, "rgba(255, 255, 255, 0.26)");
+					sheen.addColorStop(0.42, "rgba(255, 255, 255, 0.04)");
+					sheen.addColorStop(1, "rgba(0, 0, 0, 0.2)");
+					ctx.fillStyle = sheen;
+					ctx.fillRect(-L / 2, -W / 2, L, W);
+					ctx.fillStyle = "rgba(0, 0, 0, 0.22)";
+					ctx.fillRect(-0.5, -W / 2, 1, W);
+					ctx.restore();
+					roundRectPath(ctx, -L / 2, -W / 2, L, W, r);
+					ctx.lineWidth = 1;
+					ctx.strokeStyle = "rgba(0, 0, 0, 0.35)";
+					ctx.stroke();
+					ctx.restore();
+
+					// Pole letters stay upright whatever the rotation.
+					const fs = clamp(W * 0.46, 9, 18);
+					ctx.font = "600 " + fs.toFixed(1) + "px " + fonts.display;
+					ctx.textAlign = "center";
+					ctx.textBaseline = "middle";
+					ctx.fillStyle = "#ffffff";
+					const off = Field.hl * k * 0.5;
+					ctx.fillText("N", view.cx + Field.mx * off, view.cy + Field.my * off + fs * 0.05);
+					ctx.fillText("S", view.cx - Field.mx * off, view.cy - Field.my * off + fs * 0.05);
+				}
+
+				function drawField() {
+					const ctx = fctx;
+					ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+					ctx.globalAlpha = 1;
+					if (state.mode === "filings") {
+						ctx.fillStyle = P.stageFilings;
+						ctx.fillRect(0, 0, view.w, view.h);
+						ctx.fillStyle = paper(ctx);
+						ctx.fillRect(0, 0, view.w, view.h);
+						drawFilings(ctx);
+					} else {
+						ctx.fillStyle = P.stage;
+						ctx.fillRect(0, 0, view.w, view.h);
+						drawLines(ctx);
+					}
+					drawMagnet(ctx);
+					if (state.mode === "lines" && state.showNulls) {
+						drawNullMarkers(ctx);
+					}
+				}
+
+				/* =========================================================
+				Compass
+				========================================================= */
+
+				const compass = {
+					x: DEFAULT_COMPASS.x,
+					y: DEFAULT_COMPASS.y,
+					phi: -Math.PI / 2,
+					omega: 0,
+					noise: 0,
+					tx: 0,
+					ty: 0,
+					gliding: false
+				};
+				const reading = { bx: 0, by: -1, net: 0, mag: 0, earth: 0, bearing: 0, state: "earth" };
+				const probe = { x: 0, y: 0 };
+				let tracePath = null;
+				let traceDirty = true;
+
+				function compassRadius() {
+					return state.compassSize * clamp(view.k, 0.75, 1.35);
+				}
+
+				// Keeps a world point inside the view and outside the bar.
+				function clampPoint(p) {
+					let x = p.x;
+					let y = p.y;
+					const m = 4 / view.k;
+					const u = x * Field.ux + y * Field.uy;
+					const v = x * Field.mx + y * Field.my;
+					const H = Field.h + m;
+					const HL = Field.hl + m;
+					if (Math.abs(u) < H && Math.abs(v) < HL) {
+						let nu = u;
+						let nv = v;
+						if (H - Math.abs(u) < HL - Math.abs(v)) {
+							nu = (u < 0 ? -1 : 1) * H;
+						} else {
+							nv = (v < 0 ? -1 : 1) * HL;
+						}
+						x = nu * Field.ux + nv * Field.mx;
+						y = nu * Field.uy + nv * Field.my;
+					}
+					const e = 6 / view.k;
+					return { x: clamp(x, view.x0 + e, view.x1 - e), y: clamp(y, view.y0 + e, view.y1 - e) };
+				}
+
+				function clampCompass() {
+					const p = clampPoint(compass);
+					if (p.x !== compass.x || p.y !== compass.y) {
+						compass.x = p.x;
+						compass.y = p.y;
+						traceDirty = true;
+					}
+					if (compass.gliding) {
+						const t = clampPoint({ x: compass.tx, y: compass.ty });
+						compass.tx = t.x;
+						compass.ty = t.y;
+					}
+				}
+
+				function moveCompassTo(p) {
+					const c = clampPoint(p);
+					compass.x = c.x;
+					compass.y = c.y;
+					compass.gliding = false;
+					traceDirty = true;
+					uiDirty = true;
+					kick();
+				}
+
+				function glideCompassTo(p) {
+					const c = clampPoint(p);
+					if (reducedMotion) {
+						moveCompassTo(c);
+						return;
+					}
+					compass.tx = c.x;
+					compass.ty = c.y;
+					compass.gliding = true;
+					kick();
+				}
+
+				function sampleCompass() {
+					Field.magnet(compass.x, compass.y, probe);
+					const bx = probe.x;
+					const by = probe.y + Field.ey;
+					reading.bx = bx;
+					reading.by = by;
+					reading.net = Math.sqrt(bx * bx + by * by);
+					reading.mag = Math.sqrt(probe.x * probe.x + probe.y * probe.y);
+					reading.earth = Field.E;
+					reading.bearing = (Math.atan2(bx, -by) / DEG + 360) % 360;
+					if (Field.E > 0 && reading.net < 0.1 * Field.E && reading.mag > 0.5 * Field.E) {
+						reading.state = "null";
+					} else {
+						reading.state = reading.mag >= Field.E ? "magnet" : "earth";
+					}
+				}
+
+				// Advances the needle. Returns true while something is still moving.
+				function updateCompass(dt) {
+					if (!state.compassOn) {
+						return false;
+					}
+					let busy = false;
+					if (compass.gliding) {
+						const a = 1 - Math.exp(-dt * 9);
+						compass.x += (compass.tx - compass.x) * a;
+						compass.y += (compass.ty - compass.y) * a;
+						if (Math.abs(compass.tx - compass.x) + Math.abs(compass.ty - compass.y) < 0.05) {
+							compass.x = compass.tx;
+							compass.y = compass.ty;
+							compass.gliding = false;
+						}
+						traceDirty = true;
+						busy = true;
+					}
+					sampleCompass();
+					const target = Math.atan2(reading.by, reading.bx);
+					if (reducedMotion) {
+						if (reading.state !== "null" && reading.net > 0) {
+							compass.phi = target;
+						}
+						compass.omega = 0;
+						return busy;
+					}
+					// The pull on the needle fades as the resultant field fades, so near a
+					// null point it wanders instead of settling.
+					const sc = reading.net / (Field.E > 0 ? Field.E : 30);
+					const grip = sc / (sc + 0.08);
+					const loose = (1 - grip) * (1 - grip);
+					compass.noise += ((Math.random() * 2 - 1) * 1.6 - compass.noise) * Math.min(1, dt * 1.5);
+					const K = 70 * grip;
+					const damping = 4.2;
+					const sub = 4;
+					const hdt = dt / sub;
+					for (let i = 0; i < sub; i++) {
+						const acc = -K * Math.sin(compass.phi - target) - damping * compass.omega + compass.noise * loose;
+						compass.omega += acc * hdt;
+						compass.phi += compass.omega * hdt;
+					}
+					compass.phi = wrapAngle(compass.phi);
+					const swinging = Math.abs(compass.omega) > 0.004 || Math.abs(Math.sin(compass.phi - target)) > 0.002;
+					return busy || swinging || reading.state === "null" || loose > 0.02;
+				}
+
+				function computeCompassTrace() {
+					tracePath = null;
+					if (!state.compassTrace || !state.compassOn) {
+						return;
+					}
+					sampleCompass();
+					if (reading.state === "null" || Field.inside(compass.x, compass.y, 0)) {
+						return;
+					}
+					const box = { x0: view.x0, x1: view.x1, y0: view.y0, y1: view.y1 };
+					const level = Field.psi(compass.x, compass.y);
+					const ahead = [compass.x, compass.y];
+					const behind = [compass.x, compass.y];
+					Tracer.trace(compass.x, compass.y, 1, level, ahead, box);
+					Tracer.trace(compass.x, compass.y, -1, level, behind, box);
+					tracePath = [polylineToScreen(ahead), polylineToScreen(behind)];
+				}
+
+				function drawTrace(ctx) {
+					if (!tracePath) {
+						return;
+					}
+					ctx.save();
+					ctx.lineJoin = "round";
+					ctx.lineCap = "round";
+					for (const pass of [
+						[P.dark ? "rgba(15, 25, 38, 0.85)" : "rgba(255, 255, 255, 0.9)", 5, []],
+						[P.ink, 2, [7, 5]]
+					]) {
+						ctx.beginPath();
+						for (const p of tracePath) {
+							ctx.moveTo(p[0], p[1]);
+							for (let i = 2; i < p.length; i += 2) {
+								ctx.lineTo(p[i], p[i + 1]);
+							}
+						}
+						ctx.strokeStyle = pass[0];
+						ctx.lineWidth = pass[1];
+						ctx.setLineDash(pass[2]);
+						ctx.stroke();
+					}
+					ctx.restore();
+				}
+
+				function drawCompass(ctx, now) {
+					const x = toScreenX(compass.x);
+					const y = toScreenY(compass.y);
+					const R = compassRadius();
+					const dark = P.dark;
+					const isNull = reading.state === "null";
+					const lifted = dragMode === "compass";
+					ctx.save();
+
+					if (isNull) {
+						const pulse = reducedMotion ? 0.5 : 0.5 + 0.5 * Math.sin(now / 260);
+						ctx.beginPath();
+						ctx.arc(x, y, R + 5 + pulse * 5, 0, TAU);
+						ctx.strokeStyle = P.nullc;
+						ctx.globalAlpha = 0.3 + 0.45 * (1 - pulse);
+						ctx.lineWidth = 2;
+						ctx.stroke();
+						ctx.globalAlpha = 1;
+					}
+
+					// Housing
+					ctx.shadowColor = dark ? "rgba(0, 0, 0, 0.6)" : "rgba(15, 25, 40, 0.3)";
+					ctx.shadowBlur = (lifted ? 18 : 10) * view.dpr;
+					ctx.shadowOffsetY = (lifted ? 7 : 3) * view.dpr;
+					const bezel = ctx.createLinearGradient(x - R, y - R, x + R, y + R);
+					bezel.addColorStop(0, dark ? "#5d697b" : "#ffffff");
+					bezel.addColorStop(1, dark ? "#1b2431" : "#97a2b1");
+					ctx.beginPath();
+					ctx.arc(x, y, R, 0, TAU);
+					ctx.fillStyle = bezel;
+					ctx.fill();
+					ctx.shadowColor = "transparent";
+					ctx.lineWidth = 1;
+					ctx.strokeStyle = dark ? "rgba(0, 0, 0, 0.65)" : "rgba(20, 30, 45, 0.45)";
+					ctx.stroke();
+
+					// Dial
+					const fr = R * 0.84;
+					ctx.beginPath();
+					ctx.arc(x, y, fr, 0, TAU);
+					ctx.fillStyle = dark ? "#152030" : "#fbfcfd";
+					ctx.fill();
+					ctx.strokeStyle = dark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.14)";
+					ctx.stroke();
+
+					const tick = dark ? "rgba(220, 230, 242, 0.55)" : "rgba(24, 32, 43, 0.55)";
+					const nt = R >= 26 ? 36 : 12;
+					ctx.beginPath();
+					for (let i = 0; i < nt; i++) {
+						const a = (i / nt) * TAU;
+						const major = i % (nt / 4) === 0;
+						const r1 = fr - 1.5;
+						const r0 = fr - (major ? R * 0.17 : R * 0.08);
+						ctx.moveTo(x + Math.sin(a) * r0, y - Math.cos(a) * r0);
+						ctx.lineTo(x + Math.sin(a) * r1, y - Math.cos(a) * r1);
+					}
+					ctx.strokeStyle = tick;
+					ctx.lineWidth = 1;
+					ctx.stroke();
+
+					if (R >= 24) {
+						const fs = Math.max(8, R * 0.21);
+						ctx.font = "600 " + fs.toFixed(1) + "px " + fonts.display;
+						ctx.textAlign = "center";
+						ctx.textBaseline = "middle";
+						const rr = fr - R * 0.31;
+						ctx.fillStyle = P.north;
+						ctx.fillText("N", x, y - rr);
+						if (R >= 34) {
+							ctx.fillStyle = tick;
+							ctx.fillText("E", x + rr, y);
+							ctx.fillText("S", x, y + rr);
+							ctx.fillText("W", x - rr, y);
+						}
+					}
+
+					// Needle: red end is its north-seeking pole.
+					ctx.save();
+					ctx.translate(x, y);
+					ctx.rotate(compass.phi);
+					const nl = fr * 0.86;
+					const nw = Math.max(2.2, R * 0.12);
+					ctx.shadowColor = "rgba(0, 0, 0, 0.3)";
+					ctx.shadowBlur = 3 * view.dpr;
+					ctx.shadowOffsetY = 1.5 * view.dpr;
+					ctx.beginPath();
+					ctx.moveTo(nl, 0);
+					ctx.lineTo(0, -nw);
+					ctx.lineTo(-nl, 0);
+					ctx.lineTo(0, nw);
+					ctx.closePath();
+					ctx.fillStyle = P.south;
+					ctx.fill();
+					ctx.shadowColor = "transparent";
+					ctx.beginPath();
+					ctx.moveTo(nl, 0);
+					ctx.lineTo(0, -nw);
+					ctx.lineTo(0, nw);
+					ctx.closePath();
+					ctx.fillStyle = P.north;
+					ctx.fill();
+					ctx.beginPath();
+					ctx.moveTo(nl, 0);
+					ctx.lineTo(0, -nw);
+					ctx.lineTo(-nl, 0);
+					ctx.closePath();
+					ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
+					ctx.fill();
+					ctx.restore();
+
+					// Pivot and glass
+					const pr = Math.max(2, R * 0.09);
+					const pivot = ctx.createRadialGradient(x - pr * 0.4, y - pr * 0.4, 0, x, y, pr);
+					pivot.addColorStop(0, "#ffffff");
+					pivot.addColorStop(1, dark ? "#6b7788" : "#8c97a6");
+					ctx.beginPath();
+					ctx.arc(x, y, pr, 0, TAU);
+					ctx.fillStyle = pivot;
+					ctx.fill();
+					ctx.beginPath();
+					ctx.arc(x, y, fr - 1.5, Math.PI * 1.1, Math.PI * 1.42);
+					ctx.strokeStyle = "rgba(255, 255, 255, " + (dark ? 0.22 : 0.65) + ")";
+					ctx.lineWidth = Math.max(1, R * 0.05);
+					ctx.lineCap = "round";
+					ctx.stroke();
+
+					if (isNull) {
+						ctx.font = "600 12px " + fonts.display;
+						ctx.textAlign = "center";
+						ctx.textBaseline = "middle";
+						const label = "Null point";
+						const tw = ctx.measureText(label).width + 16;
+						let ty = y + R + 18;
+						if (ty > view.h - 12) {
+							ty = y - R - 18;
+						}
+						roundRectPath(ctx, x - tw / 2, ty - 10, tw, 20, 10);
+						ctx.fillStyle = P.nullc;
+						ctx.fill();
+						ctx.fillStyle = dark ? "#160b14" : "#ffffff";
+						ctx.fillText(label, x, ty + 0.5);
+					}
+					ctx.restore();
+				}
+
+				function drawRotateHint(ctx) {
+					const r = Field.hl * view.k + 18;
+					const base = Math.atan2(Field.my, Field.mx);
+					ctx.save();
+					ctx.translate(view.cx, view.cy);
+					ctx.globalAlpha = dragMode === "magnet" ? 0.9 : 0.6;
+					ctx.strokeStyle = P.muted;
+					ctx.fillStyle = P.muted;
+					ctx.lineWidth = 1.2;
+					ctx.setLineDash([3, 5]);
+					ctx.beginPath();
+					ctx.arc(0, 0, r, 0, TAU);
+					ctx.stroke();
+					ctx.setLineDash([]);
+					for (const off of [0, Math.PI]) {
+						const a = base + off + 0.4;
+						const px = Math.cos(a) * r;
+						const py = Math.sin(a) * r;
+						const tx = -Math.sin(a);
+						const ty = Math.cos(a);
+						ctx.beginPath();
+						ctx.moveTo(px + tx * 6, py + ty * 6);
+						ctx.lineTo(px - tx * 2 + Math.cos(a) * 4.5, py - ty * 2 + Math.sin(a) * 4.5);
+						ctx.lineTo(px - tx * 2 - Math.cos(a) * 4.5, py - ty * 2 - Math.sin(a) * 4.5);
+						ctx.closePath();
+						ctx.fill();
+					}
+					if (dragMode === "magnet") {
+						ctx.globalAlpha = 1;
+						ctx.font = "600 12px " + fonts.display;
+						ctx.textAlign = "center";
+						ctx.textBaseline = "middle";
+						const lx = Field.mx * (r + 20);
+						const ly = Field.my * (r + 20);
+						haloText(ctx, "N pole " + state.magnetAngle + "°", lx, ly, P.ink);
+					}
+					ctx.restore();
+				}
+
+				function drawUI(now) {
+					const ctx = uctx;
+					ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+					ctx.clearRect(0, 0, view.w, view.h);
+					if (hover === "magnet" || dragMode === "magnet") {
+						drawRotateHint(ctx);
+					}
+					if (state.compassOn) {
+						drawTrace(ctx);
+						drawCompass(ctx, now);
+					}
+					updateReadout();
+				}
+
+				/* =========================================================
+				Overlays and panel state
+				========================================================= */
+
+				const $ = id => document.getElementById(id);
+				const ro = {
+					box: $("readout"),
+					state: $("roState"),
+					net: $("roNet"),
+					dir: $("roDir"),
+					mag: $("roMag"),
+					earth: $("roEarth"),
+					bar: $("roBar"),
+					note: $("roNote")
+				};
+				const roCache = {};
+
+				function setText(el, key, text) {
+					if (roCache[key] !== text) {
+						roCache[key] = text;
+						el.textContent = text;
+					}
+				}
+
+				function updateReadout() {
+					ro.box.hidden = !state.compassOn;
+					if (!state.compassOn) {
+						return;
+					}
+					const r = reading;
+					const isNull = r.state === "null";
+					setText(ro.net, "net", isNull ? "≈ 0 µT" : fmtB(r.net));
+					setText(ro.dir, "dir", isNull ? "Any way" : (Math.round(r.bearing) % 360) + "° " + windOf(r.bearing));
+					setText(ro.mag, "mag", fmtB(r.mag));
+					setText(ro.earth, "earth", r.earth > 0 ? fmtB(r.earth) : "Off");
+					setText(ro.state, "label", isNull ? "Null point" : r.state === "magnet" ? "Magnet’s field stronger" : "Earth’s field stronger");
+					if (roCache.kind !== r.state) {
+						roCache.kind = r.state;
+						ro.state.className = "ro-state is-" + r.state;
+						ro.note.hidden = !isNull;
+					}
+					const share = r.mag + r.earth > 0 ? r.mag / (r.mag + r.earth) : 1;
+					const width = (share * 100).toFixed(1) + "%";
+					if (roCache.bar !== width) {
+						roCache.bar = width;
+						ro.bar.style.width = width;
+					}
+				}
+
+				const legend = $("legend");
+				const northHud = $("northHud");
+				const earthHud = $("earthHud");
+				const toNullBtn = $("toNullBtn");
+				const nullNote = $("nullNote");
+
+				function visibleNulls() {
+					return nulls.filter(n => inView(n.x, n.y, 6));
+				}
+
+				function updateLegend() {
+					legend.hidden = state.mode !== "lines";
+					const tinted = state.tintEarth && state.earthOn;
+					$("lgEarth").hidden = !tinted;
+					$("lgMagnetText").textContent = tinted ? "Field line from the magnet" : "Field line";
+					const count = visibleNulls().length;
+					const showNull = state.showNulls && count > 0;
+					$("lgSep").hidden = !showNull;
+					$("lgNull").hidden = !showNull;
+					$("lgNullText").textContent = count === 1 ? "Null point" : count + " null points";
+					northHud.classList.toggle("is-off", !state.earthOn);
+					earthHud.textContent = state.earthOn ? "Earth’s field " + state.earthStrength + " µT" : "Earth’s field off";
+				}
+
+				function updateNullUI() {
+					const count = visibleNulls().length;
+					toNullBtn.disabled = !state.compassOn || count === 0;
+					let note;
+					if (!state.earthOn) {
+						note = "Null points appear only when the Earth’s field is included.";
+					} else if (count === 0) {
+						note = "No null point is in view. Weaken the magnet or strengthen the Earth’s field to bring one closer.";
+					} else if (count === 1) {
+						note = "One null point is in view.";
+					} else {
+						note = count + " null points are in view.";
+					}
+					nullNote.textContent = note;
+				}
+
+				/* =========================================================
+				Render loop
+				========================================================= */
+
+				let needRebuild = true;
+				let needRedraw = true;
+				let uiDirty = true;
+				let running = false;
+				let lastT = 0;
+				let hover = null;
+				let dragMode = null;
+
+				function requestField(kind) {
+					if (kind === "rebuild") {
+						needRebuild = true;
+					}
+					needRedraw = true;
+					uiDirty = true;
+					kick();
+				}
+
+				function kick() {
+					if (!running) {
+						running = true;
+						lastT = performance.now();
+						requestAnimationFrame(frame);
+					}
+				}
+
+				function frame(now) {
+					const dt = clamp((now - lastT) / 1000, 0, 0.05);
+					lastT = now;
+					if (view.w > 1) {
+						if (needRebuild) {
+							rebuild();
+							needRebuild = false;
+							needRedraw = true;
+						}
+						if (needRedraw) {
+							drawField();
+							needRedraw = false;
+							uiDirty = true;
+						}
+					}
+					const busy = updateCompass(dt);
+					if (traceDirty) {
+						computeCompassTrace();
+						traceDirty = false;
+						uiDirty = true;
+					}
+					if (busy || uiDirty) {
+						drawUI(now);
+						uiDirty = false;
+					}
+					if (busy || dragMode || needRebuild || needRedraw) {
+						requestAnimationFrame(frame);
+					} else {
+						running = false;
+					}
+				}
+
+				/* =========================================================
+				Controls
+				========================================================= */
+
+				const controls = {};
+				document.querySelectorAll("input[data-key]").forEach(el => {
+					controls[el.dataset.key] = el;
+				});
+				const outputs = {};
+				document.querySelectorAll("[data-out]").forEach(el => {
+					outputs[el.dataset.out] = el;
+				});
+				const modeButtons = Array.from(document.querySelectorAll("[data-mode]"));
+				const modeBlocks = Array.from(document.querySelectorAll("[data-mode-block]"));
+				const chips = Array.from(document.querySelectorAll("[data-angle]"));
+
+				function syncControl(key) {
+					const el = controls[key];
+					if (el) {
+						if (el.type === "checkbox") {
+							el.checked = !!state[key];
+						} else {
+							el.value = String(state[key]);
+							const min = Number(el.min);
+							const max = Number(el.max);
+							el.style.setProperty("--fill", (((state[key] - min) / (max - min)) * 100).toFixed(2) + "%");
+						}
+					}
+					if (outputs[key]) {
+						outputs[key].textContent = FORMAT[key](state[key]);
+					}
+					if (key === "mode") {
+						for (const b of modeButtons) {
+							const on = b.dataset.mode === state.mode;
+							b.setAttribute("aria-checked", on ? "true" : "false");
+							b.tabIndex = on ? 0 : -1;
+						}
+						for (const blk of modeBlocks) {
+							blk.hidden = blk.dataset.modeBlock !== state.mode;
+						}
+					}
+					if (key === "magnetAngle") {
+						for (const c of chips) {
+							c.setAttribute("aria-pressed", Number(c.dataset.angle) === state.magnetAngle ? "true" : "false");
+						}
+					}
+					if (key === "earthOn") {
+						controls.earthStrength.disabled = !state.earthOn;
+						$("earthStrengthField").classList.toggle("is-disabled", !state.earthOn);
+					}
+					if (key === "compassOn") {
+						controls.compassSize.disabled = !state.compassOn;
+						controls.compassTrace.disabled = !state.compassOn;
+						$("compassSizeField").classList.toggle("is-disabled", !state.compassOn);
+						$("compassTraceToggle").classList.toggle("is-disabled", !state.compassOn);
+					}
+				}
+
+				function syncAll() {
+					for (const key of Object.keys(DEFAULTS)) {
+						syncControl(key);
+					}
+					updateLegend();
+					updateNullUI();
+				}
+
+				function setValue(key, value) {
+					if (state[key] === value) {
+						return;
+					}
+					state[key] = value;
+					syncControl(key);
+					const fx = EFFECT[key];
+					if (fx === "rebuild") {
+						requestField("rebuild");
+					} else if (fx === "redraw") {
+						requestField("redraw");
+					} else {
+						traceDirty = true;
+						uiDirty = true;
+						kick();
+					}
+					updateLegend();
+					updateNullUI();
+				}
+
+				function setAngle(a) {
+					setValue("magnetAngle", ((Math.round(a) % 360) + 360) % 360);
+				}
+
+				Object.keys(controls).forEach(key => {
+					const el = controls[key];
+					if (el.type === "checkbox") {
+						el.addEventListener("change", () => setValue(key, el.checked));
+					} else {
+						el.addEventListener("input", () => setValue(key, Number(el.value)));
+					}
+				});
+
+				modeButtons.forEach(b => {
+					b.addEventListener("click", () => setValue("mode", b.dataset.mode));
+					b.addEventListener("keydown", e => {
+						if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown") {
+							e.preventDefault();
+							const next = state.mode === "filings" ? "lines" : "filings";
+							setValue("mode", next);
+							modeButtons.find(m => m.dataset.mode === next).focus();
+						}
+					});
+				});
+
+				chips.forEach(c => {
+					c.addEventListener("click", () => setAngle(Number(c.dataset.angle)));
+				});
+
+				$("sprinkleBtn").addEventListener("click", () => {
+					seed = (Math.random() * 4294967296) >>> 0;
+					requestField("rebuild");
+				});
+
+				toNullBtn.addEventListener("click", () => {
+					const list = visibleNulls();
+					if (!list.length || !state.compassOn) {
+						return;
+					}
+					let best = list[0];
+					let bestD = Infinity;
+					for (const n of list) {
+						const d = (n.x - compass.x) * (n.x - compass.x) + (n.y - compass.y) * (n.y - compass.y);
+						if (d < bestD) {
+							bestD = d;
+							best = n;
+						}
+					}
+					glideCompassTo({ x: best.x, y: best.y });
+				});
+
+				/* ---------- Theme ---------- */
+
+				const themeBtn = $("themeBtn");
+				let themeChoice = null; // 'light' | 'dark' | null (follow the system)
+				let themeTouched = false; // stops a slow storage read from overriding a click
+
+				function systemTheme() {
+					return mqDark && mqDark.matches ? "dark" : "light";
+				}
+
+				function applyTheme() {
+					const t = themeChoice || systemTheme();
+					document.documentElement.setAttribute("data-theme", t);
+					themeBtn.setAttribute("aria-label", t === "dark" ? "Switch to light mode" : "Switch to dark mode");
+					themeBtn.title = t === "dark" ? "Switch to light mode" : "Switch to dark mode";
+					readPalette();
+					requestField("redraw");
+				}
+
+				themeBtn.addEventListener("click", () => {
+					themeTouched = true;
+					const current = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+					themeChoice = current === "dark" ? "light" : "dark";
+					Store.set(THEME_KEY, themeChoice);
+					applyTheme();
+				});
+
+				if (mqDark) {
+					const onSystemChange = () => {
+						if (!themeChoice) {
+							applyTheme();
+						}
+					};
+					if (mqDark.addEventListener) {
+						mqDark.addEventListener("change", onSystemChange);
+					} else if (mqDark.addListener) {
+						mqDark.addListener(onSystemChange);
+					}
+				}
+
+				if (mqMotion) {
+					const onMotion = () => {
+						reducedMotion = mqMotion.matches;
+					};
+					if (mqMotion.addEventListener) {
+						mqMotion.addEventListener("change", onMotion);
+					} else if (mqMotion.addListener) {
+						mqMotion.addListener(onMotion);
+					}
+				}
+
+				/* ---------- Reset ---------- */
+
+				const toast = $("toast");
+				let toastTimer = 0;
+
+				function showToast(text) {
+					toast.textContent = text;
+					toast.classList.add("is-on");
+					clearTimeout(toastTimer);
+					toastTimer = setTimeout(() => toast.classList.remove("is-on"), 1800);
+				}
+
+				$("resetBtn").addEventListener("click", () => {
+					Object.assign(state, DEFAULTS);
+					seed = DEFAULT_SEED;
+					compass.x = DEFAULT_COMPASS.x;
+					compass.y = DEFAULT_COMPASS.y;
+					compass.gliding = false;
+					traceDirty = true;
+					themeTouched = true;
+					themeChoice = null;
+					Store.remove(THEME_KEY);
+					syncAll();
+					applyTheme();
+					requestField("rebuild");
+					showToast("Defaults restored");
+				});
+
+				/* =========================================================
+				Pointer and keyboard input on the stage
+				========================================================= */
+
+				function stagePoint(e) {
+					const r = uiCanvas.getBoundingClientRect();
+					return { x: e.clientX - r.left, y: e.clientY - r.top };
+				}
+
+				function hitCompass(p) {
+					if (!state.compassOn) {
+						return false;
+					}
+					const dx = p.x - toScreenX(compass.x);
+					const dy = p.y - toScreenY(compass.y);
+					const R = compassRadius() + 6;
+					return dx * dx + dy * dy <= R * R;
+				}
+
+				function hitMagnet(p) {
+					const w = toWorld(p);
+					return Field.inside(w.x, w.y, 6 / view.k);
+				}
+
+				function bearingOf(w) {
+					return (Math.atan2(w.x, -w.y) / DEG + 360) % 360;
+				}
+
+				function snapAngle(a) {
+					a = ((a % 360) + 360) % 360;
+					const near = Math.round(a / 45) * 45;
+					return Math.abs(a - near) < 3 ? near % 360 : Math.round(a) % 360;
+				}
+
+				function updateCursor() {
+					let c = state.compassOn ? "crosshair" : "default";
+					if (dragMode) {
+						c = "grabbing";
+					} else if (hover) {
+						c = "grab";
+					}
+					uiCanvas.style.cursor = c;
+				}
+
+				function updateHover(p) {
+					const h = hitCompass(p) ? "compass" : hitMagnet(p) ? "magnet" : null;
+					if (h !== hover) {
+						hover = h;
+						uiDirty = true;
+						kick();
+					}
+					updateCursor();
+				}
+
+				let drag = null;
+
+				uiCanvas.addEventListener("pointerdown", e => {
+					if (e.button > 0) {
+						return;
+					}
+					const p = stagePoint(e);
+					if (hitCompass(p)) {
+						drag = { kind: "compass", id: e.pointerId, ox: p.x - toScreenX(compass.x), oy: p.y - toScreenY(compass.y) };
+						compass.gliding = false;
+					} else if (hitMagnet(p)) {
+						drag = { kind: "magnet", id: e.pointerId, offset: state.magnetAngle - bearingOf(toWorld(p)) };
+					} else {
+						drag = { kind: "tap", id: e.pointerId, sx: p.x, sy: p.y, moved: false };
+					}
+					if (drag.kind !== "tap") {
+						dragMode = drag.kind;
+						try {
+							uiCanvas.setPointerCapture(e.pointerId);
+						} catch (err) {
+							// Capture is a nicety; dragging still works without it.
+						}
+						e.preventDefault();
+					}
+					updateCursor();
+					uiDirty = true;
+					kick();
+				});
+
+				uiCanvas.addEventListener("pointermove", e => {
+					const p = stagePoint(e);
+					if (drag && drag.id === e.pointerId) {
+						if (drag.kind === "compass") {
+							moveCompassTo(toWorld({ x: p.x - drag.ox, y: p.y - drag.oy }));
+						} else if (drag.kind === "magnet") {
+							setAngle(snapAngle(bearingOf(toWorld(p)) + drag.offset));
+						} else if (Math.abs(p.x - drag.sx) + Math.abs(p.y - drag.sy) > 8) {
+							drag.moved = true;
+						}
+						return;
+					}
+					updateHover(p);
+				});
+
+				function endDrag(e, cancelled) {
+					if (!drag || drag.id !== e.pointerId) {
+						return;
+					}
+					if (drag.kind === "tap" && !cancelled && !drag.moved && state.compassOn) {
+						glideCompassTo(toWorld(stagePoint(e)));
+					}
+					drag = null;
+					dragMode = null;
+					updateHover(stagePoint(e));
+					uiDirty = true;
+					kick();
+				}
+
+				uiCanvas.addEventListener("pointerup", e => endDrag(e, false));
+				uiCanvas.addEventListener("pointercancel", e => endDrag(e, true));
+				uiCanvas.addEventListener("pointerleave", () => {
+					if (!drag && hover) {
+						hover = null;
+						uiDirty = true;
+						kick();
+					}
+				});
+
+				// On touch screens the page can still scroll, unless the touch starts on the compass or the magnet.
+				uiCanvas.addEventListener(
+					"touchstart",
+					e => {
+						if (e.touches.length !== 1) {
+							return;
+						}
+						const r = uiCanvas.getBoundingClientRect();
+						const p = { x: e.touches[0].clientX - r.left, y: e.touches[0].clientY - r.top };
+						if (hitCompass(p) || hitMagnet(p)) {
+							e.preventDefault();
+						}
+					},
+					{ passive: false }
+				);
+
+				stage.addEventListener("keydown", e => {
+					const big = e.shiftKey;
+					let dx = 0;
+					let dy = 0;
+					switch (e.key) {
+						case "ArrowLeft":
+							dx = -1;
+							break;
+						case "ArrowRight":
+							dx = 1;
+							break;
+						case "ArrowUp":
+							dy = -1;
+							break;
+						case "ArrowDown":
+							dy = 1;
+							break;
+						case "[":
+						case "{":
+							e.preventDefault();
+							setAngle(state.magnetAngle - (big ? 15 : 5));
+							return;
+						case "]":
+						case "}":
+							e.preventDefault();
+							setAngle(state.magnetAngle + (big ? 15 : 5));
+							return;
+						default:
+							return;
+					}
+					if (!state.compassOn) {
+						return;
+					}
+					e.preventDefault();
+					const step = (big ? 25 : 5) / view.k;
+					moveCompassTo({ x: compass.x + dx * step, y: compass.y + dy * step });
+				});
+
+				/* =========================================================
+				Start
+				========================================================= */
+
+				readPalette();
+				syncAll();
+				if (typeof ResizeObserver === "function") {
+					new ResizeObserver(resize).observe(stage);
+				}
+				window.addEventListener("resize", resize);
+				resize();
+				kick();
+
+				Store.get(THEME_KEY).then(saved => {
+					if (themeTouched) {
+						return;
+					}
+					themeChoice = saved === "light" || saved === "dark" ? saved : null;
+					applyTheme();
+				});
+			})();
+		</script>
+	</body>
+</html>

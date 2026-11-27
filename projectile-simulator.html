@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8"/>
+		<meta name="viewport" content="width=device-width, initial-scale=1"/>
+		<title>Projectile motion simulator (Matter.js)</title>
+		<script>
+			// Apply a saved theme before the first paint so the page doesn't flash.
+			// (Inside a Claude artifact, the theme script further down reads window.storage instead.)
+			try {
+				const saved = window.storage ? null : localStorage.getItem("projectile-theme");
+				if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
+			} catch {
+				// Storage is blocked, so the page follows the system setting.
+			}
+		</script>
+		<style>
+			/* Colour carries meaning: ink = what you set, blue = the formulas, red = the simulation. */
+			:root {
+				color-scheme: light;
+				--paper: #e7eedf;
+				--grid: #9dbb9a;
+				--ink: #2f3437;
+				--ink-soft: #5f6b66;
+				--ink-strong: #1b1f21;
+				--blue: #1f5ba6;
+				--red: #b8323a;
+				--frame: color-mix(in srgb, var(--ink) 35%, transparent);
+				--rule: color-mix(in srgb, var(--ink) 18%, transparent);
+				--font: Bahnschrift, "DIN Alternate", "DIN Next", "D-DIN", "Roboto Condensed", "Arial Narrow", sans-serif;
+			}
+
+			/* Dark values: used when the system is dark (unless light was picked) or when dark was picked. */
+			@media (prefers-color-scheme: dark) {
+				:root:not([data-theme="light"]) {
+					color-scheme: dark;
+					--paper: #1c2521;
+					--grid: #4f6e58;
+					--ink: #e2e9de;
+					--ink-soft: #9fb0a7;
+					--ink-strong: #ffffff;
+					--blue: #86b4f4;
+					--red: #f2827d;
+				}
+			}
+
+			:root[data-theme="dark"] {
+				color-scheme: dark;
+				--paper: #1c2521;
+				--grid: #4f6e58;
+				--ink: #e2e9de;
+				--ink-soft: #9fb0a7;
+				--ink-strong: #ffffff;
+				--blue: #86b4f4;
+				--red: #f2827d;
+			}
+
+			* {
+				box-sizing: border-box;
+			}
+
+			body {
+				margin: 0;
+				background: var(--paper);
+				color: var(--ink);
+				font: 16px/1.45 var(--font);
+				font-variant-numeric: tabular-nums;
+			}
+
+			.page {
+				max-width: 1040px;
+				margin: 0 auto;
+				padding: 32px 20px 48px;
+			}
+
+			.masthead {
+				display: flex;
+				flex-wrap: wrap;
+				justify-content: space-between;
+				align-items: flex-start;
+				gap: 12px 24px;
+				margin-bottom: 20px;
+			}
+
+			h1 {
+				margin: 0;
+				font-size: 2rem;
+				font-weight: 600;
+				line-height: 1.1;
+			}
+
+			.lede {
+				margin: 6px 0 0;
+				max-width: 62ch;
+				color: var(--ink-soft);
+			}
+
+			/* Theme switch */
+			.theme-toggle {
+				display: inline-flex;
+				align-items: center;
+				gap: 10px;
+				margin-top: 4px;
+				padding: 4px 0;
+				border: 0;
+				background: none;
+				color: var(--ink);
+				font: inherit;
+				cursor: pointer;
+			}
+			.switch {
+				position: relative;
+				width: 36px;
+				height: 20px;
+				border: 2px solid var(--ink);
+				border-radius: 10px;
+			}
+			.switch::after {
+				content: "";
+				position: absolute;
+				top: 2px;
+				left: 2px;
+				width: 12px;
+				height: 12px;
+				border-radius: 50%;
+				background: var(--ink);
+				transition: transform 0.15s ease-out;
+			}
+			.theme-toggle[aria-checked="true"] .switch {
+				background: var(--ink);
+			}
+			.theme-toggle[aria-checked="true"] .switch::after {
+				background: var(--paper);
+				transform: translateX(16px);
+			}
+
+			#scene {
+				display: block;
+				width: 100%;
+				height: auto;
+				border: 1px solid var(--frame);
+			}
+			.load-error {
+				margin: 0;
+				padding: 48px 24px;
+				border: 1px solid var(--frame);
+			}
+
+			/* Worksheet: "Given" inputs on the left, "Find" results on the right */
+			.worksheet {
+				display: grid;
+				grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+				gap: 28px 56px;
+				margin-top: 24px;
+			}
+
+			h2 {
+				margin: 0 0 14px;
+				padding-bottom: 6px;
+				border-bottom: 2px solid var(--ink);
+				font-size: 1.125rem;
+				font-weight: 600;
+			}
+
+			.field {
+				display: grid;
+				grid-template-columns: 1fr auto;
+				align-items: baseline;
+				column-gap: 12px;
+				margin-bottom: 14px;
+			}
+			.field output {
+				font-weight: 600;
+			}
+			.field input {
+				grid-column: 1 / -1;
+				width: 100%;
+				margin: 6px 0 0;
+				accent-color: var(--ink);
+			}
+			.field select {
+				padding: 4px 8px;
+				border: 1px solid var(--frame);
+				border-radius: 4px;
+				background: var(--paper);
+				color: var(--ink);
+				font: inherit;
+				font-weight: 600;
+			}
+			.hint {
+				grid-column: 1 / -1;
+				margin: 4px 0 0;
+				font-size: 0.8125rem;
+				color: var(--ink-soft);
+			}
+
+			.actions {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 10px;
+				margin-top: 20px;
+			}
+
+			.btn {
+				padding: 10px 22px;
+				border: 2px solid var(--ink);
+				border-radius: 4px;
+				background: var(--ink);
+				color: var(--paper);
+				font: inherit;
+				font-weight: 600;
+				cursor: pointer;
+			}
+			.btn:hover {
+				border-color: var(--ink-strong);
+				background: var(--ink-strong);
+			}
+			.btn.secondary {
+				background: transparent;
+				color: var(--ink);
+			}
+			.btn.secondary:hover {
+				background: color-mix(in srgb, var(--ink) 8%, transparent);
+			}
+			.btn:active {
+				transform: translateY(1px);
+			}
+
+			:focus-visible {
+				outline: 2px solid var(--blue);
+				outline-offset: 2px;
+			}
+
+			table {
+				width: 100%;
+				border-collapse: collapse;
+			}
+			th,
+			td {
+				padding: 9px 0 9px 16px;
+				text-align: right;
+				vertical-align: baseline;
+				font-weight: 400;
+			}
+			thead th {
+				padding-top: 0;
+				font-size: 0.875rem;
+				color: var(--ink-soft);
+				white-space: nowrap;
+			}
+			tbody tr + tr > * {
+				border-top: 1px solid var(--rule);
+			}
+			tbody th {
+				padding-left: 0;
+				text-align: left;
+			}
+			.eq {
+				display: block;
+				font-size: 0.8125rem;
+				color: var(--ink-soft);
+			}
+			td {
+				font-size: 1.125rem;
+				font-weight: 600;
+				white-space: nowrap;
+			}
+			td.formula {
+				color: var(--blue);
+			}
+			td.sim {
+				color: var(--red);
+			}
+			td.flying {
+				opacity: 0.55;
+			}
+
+			/* Line samples that double as a legend for the canvas */
+			.key {
+				display: inline-block;
+				width: 18px;
+				margin-right: 6px;
+				vertical-align: middle;
+				border-top: 2px solid var(--red);
+			}
+			.key.dashed {
+				border-top-style: dashed;
+				border-top-color: var(--blue);
+			}
+
+			.note {
+				margin: 12px 0 0;
+				max-width: 60ch;
+				font-size: 0.875rem;
+				color: var(--ink-soft);
+			}
+
+			@media (max-width: 680px) {
+				.page {
+					padding-top: 20px;
+				}
+				.worksheet {
+					grid-template-columns: minmax(0, 1fr);
+				}
+			}
+
+			@media (prefers-reduced-motion: reduce) {
+				.switch::after {
+					transition: none;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<main class="page">
+			<header class="masthead">
+				<div>
+					<h1>Projectile motion</h1>
+					<p class="lede">Choose a speed, angle and world, press Launch, and compare the flight Matter.js simulates with the textbook formulas.</p>
+				</div>
+				<button id="theme-toggle" class="theme-toggle" type="button" role="switch" aria-checked="false">
+					<span class="switch" aria-hidden="true"></span>
+					Dark mode
+				</button>
+			</header>
+
+			<canvas id="scene" width="1000" height="560" role="img" aria-label="Projectile simulation"></canvas>
+
+			<section class="worksheet">
+				<div>
+					<h2>Given</h2>
+					<div class="field">
+						<label for="speed">Launch speed <i>v</i>₀</label>
+						<output id="speed-out" for="speed"></output>
+						<input id="speed" type="range" min="5" max="40" step="0.5" value="30"/>
+					</div>
+					<div class="field">
+						<label for="angle">Launch angle <i>θ</i></label>
+						<output id="angle-out" for="angle"></output>
+						<input id="angle" type="range" min="5" max="90" step="1" value="45"/>
+					</div>
+					<div class="field">
+						<label for="world">World</label>
+						<select id="world"></select>
+					</div>
+					<div class="field">
+						<label for="gravity">Gravity <i>g</i></label>
+						<output id="gravity-out" for="gravity"></output>
+						<input id="gravity" type="range" min="0.5" max="25" step="0.01" value="9.81" list="world-marks"/>
+						<datalist id="world-marks"></datalist>
+					</div>
+					<div class="field">
+						<label for="drag">Air drag</label>
+						<output id="drag-out" for="drag"></output>
+						<input id="drag" type="range" min="0" max="0.03" step="0.001" value="0" list="drag-marks" aria-describedby="drag-hint"/>
+						<datalist id="drag-marks"><option value="0.01"></option></datalist>
+						<p id="drag-hint" class="hint">Sets Matter's frictionAir: 0 is a vacuum, 0.01 is the engine's default.</p>
+					</div>
+					<div class="actions">
+						<button id="launch" class="btn" type="button">Launch</button>
+						<button id="clear" class="btn secondary" type="button">Clear shots</button>
+					</div>
+				</div>
+
+				<div>
+					<h2>Find</h2>
+					<table>
+						<thead>
+							<tr>
+								<td></td>
+								<th scope="col"><span class="key dashed"></span>Formula</th>
+								<th scope="col"><span class="key"></span>Simulated</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr>
+								<th scope="row">Range <i>R</i><span class="eq">v₀² sin 2θ / g</span></th>
+								<td id="f-range" class="formula"></td>
+								<td id="s-range" class="sim"></td>
+							</tr>
+							<tr>
+								<th scope="row">Max height <i>H</i><span class="eq">v₀² sin²θ / 2g</span></th>
+								<td id="f-height" class="formula"></td>
+								<td id="s-height" class="sim"></td>
+							</tr>
+							<tr>
+								<th scope="row">Flight time <i>T</i><span class="eq">2v₀ sin θ / g</span></th>
+								<td id="f-time" class="formula"></td>
+								<td id="s-time" class="sim"></td>
+							</tr>
+						</tbody>
+					</table>
+					<p class="note">Simulated values update live during the flight. Small gaps come from the engine's 1/60 s time step; the formulas ignore air drag.</p>
+				</div>
+			</section>
+		</main>
+
+		<script>
+			// ── Theme ────────────────────────────────────────────────────────
+			// Follows the system setting until the switch is used; that choice then persists.
+			// Saved with window.storage inside a Claude artifact, or localStorage in a normal browser.
+			(() => {
+				const KEY = "projectile-theme";
+				const root = document.documentElement;
+				const systemDark = matchMedia("(prefers-color-scheme: dark)");
+				const toggle = document.getElementById("theme-toggle");
+
+				const isDark = () => (root.dataset.theme || (systemDark.matches ? "dark" : "light")) === "dark";
+
+				function show() {
+					toggle.setAttribute("aria-checked", String(isDark()));
+					document.dispatchEvent(new Event("themechange")); // lets the canvas pick up new colours
+				}
+
+				async function load() {
+					try {
+						const saved = window.storage ? (await window.storage.get(KEY, false)).value : localStorage.getItem(KEY);
+						if (saved === "light" || saved === "dark") root.dataset.theme = saved;
+					} catch {
+						// Nothing saved yet, or storage is blocked: keep following the system.
+					}
+					show();
+				}
+
+				async function save(theme) {
+					try {
+						if (window.storage) await window.storage.set(KEY, theme, false);
+						else localStorage.setItem(KEY, theme);
+					} catch {
+						// Storage is blocked: the choice lasts until the page is closed.
+					}
+				}
+
+				toggle.addEventListener("click", () => {
+					root.dataset.theme = isDark() ? "light" : "dark";
+					show();
+					save(root.dataset.theme);
+				});
+				systemDark.addEventListener("change", show);
+				show();
+				load();
+			})();
+		</script>
+
+		<!-- Matter.js from a CDN. To work offline, download matter.min.js and point src at your copy. -->
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.20.0/matter.min.js"></script>
+		<script>
+			if (!window.Matter) {
+				const message = document.createElement("p");
+				message.className = "load-error";
+				message.textContent = "Matter.js didn’t load. Check your connection, or download matter.min.js and point the script tag at your copy.";
+				document.getElementById("scene").replaceWith(message);
+				throw new Error("Matter.js not loaded");
+			}
+
+			const { Engine, Runner, Bodies, Body, Composite, Events } = Matter;
+
+			// ── World settings ───────────────────────────────────────────────
+			const WIDTH = 1000; // canvas size in px (CSS scales it to fit)
+			const HEIGHT = 560;
+			const SCALE = 5; // Matter px per metre
+			const GROUND_Y = 520; // top surface of the ground
+			const BALL_RADIUS = 6;
+			const LAUNCH = { x: 60, y: GROUND_Y - BALL_RADIUS }; // ball centre at launch
+			const MAX_SHOTS = 10;
+
+			// Surface gravity in m/s² (for the gas giants, at the 1-bar pressure level).
+			const WORLDS = {
+				Mercury: 3.7,
+				Venus: 8.87,
+				Earth: 9.81,
+				Moon: 1.62,
+				Mars: 3.71,
+				Jupiter: 24.79,
+				Saturn: 10.44,
+				Uranus: 8.87,
+				Neptune: 11.15,
+				Pluto: 0.62
+			};
+
+			const $ = id => document.getElementById(id);
+			const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+			const FONT = css("--font");
+			const COLOR = {};
+
+			// Canvas colours come from the CSS variables, so they follow the theme.
+			function readColors() {
+				COLOR.ink = css("--ink");
+				COLOR.inkSoft = css("--ink-soft");
+				COLOR.grid = css("--grid");
+				COLOR.blue = css("--blue");
+				COLOR.red = css("--red");
+			}
+			readColors();
+			document.addEventListener("themechange", readColors);
+
+			// ── 1. Physics: engine, runner and ground ────────────────────────
+			const engine = Engine.create();
+			Runner.run(Runner.create(), engine); // steps the physics at a fixed 1/60 s
+
+			// A very wide static box, so even long low-gravity shots land on it.
+			const ground = Bodies.rectangle(WIDTH / 2, GROUND_Y + 500, 60000, 1000, { isStatic: true });
+			Composite.add(engine.world, ground);
+
+			// ── 2. Units ─────────────────────────────────────────────────────
+			// Matter works in pixels and 1/60 s steps, so convert from SI units.
+			// Velocity: Body.setVelocity takes px per step, so m/s × SCALE / 60.
+			// Gravity: gravity.y × gravity.scale is px/ms², so m/s² × SCALE / 1e6.
+			function setGravity(g) {
+				engine.gravity.y = 1;
+				engine.gravity.scale = (g * SCALE) / 1e6;
+			}
+
+			// ── 3. Settings and the textbook prediction ──────────────────────
+			const settings = {};
+
+			for (const [name, g] of Object.entries(WORLDS)) {
+				$("world").add(new Option(name, name));
+				$("world-marks").append(new Option("", g)); // tick marks on the gravity slider
+			}
+			$("world").add(new Option("Custom", "custom"));
+
+			// The selected world if it still matches the gravity, otherwise the first world that does.
+			function matchWorld(g) {
+				const names = [$("world").value, ...Object.keys(WORLDS)];
+				return names.find(name => Math.abs(WORLDS[name] - g) < 0.001) ?? "custom";
+			}
+
+			function readSettings() {
+				settings.speed = Number($("speed").value); // m/s
+				settings.angle = Number($("angle").value); // degrees
+				settings.gravity = Number($("gravity").value); // m/s²
+				settings.drag = Number($("drag").value); // Matter frictionAir
+
+				$("speed-out").textContent = `${settings.speed.toFixed(1)} m/s`;
+				$("angle-out").textContent = `${settings.angle}°`;
+				$("gravity-out").textContent = `${settings.gravity.toFixed(2)} m/s²`;
+				$("drag-out").textContent = settings.drag.toFixed(3);
+				setGravity(settings.gravity);
+
+				const p = predict();
+				$("f-range").textContent = `${p.range.toFixed(1)} m`;
+				$("f-height").textContent = `${p.height.toFixed(1)} m`;
+				$("f-time").textContent = `${p.time.toFixed(2)} s`;
+			}
+
+			// Ideal projectile: no air, lands at the height it was launched from.
+			function predict() {
+				const v = settings.speed;
+				const g = settings.gravity;
+				const a = (settings.angle * Math.PI) / 180;
+				return {
+					vx: v * Math.cos(a),
+					vy: v * Math.sin(a),
+					range: (v * v * Math.sin(2 * a)) / g,
+					height: (v * Math.sin(a)) ** 2 / (2 * g),
+					time: (2 * v * Math.sin(a)) / g
+				};
+			}
+
+			// ── 4. Launching ─────────────────────────────────────────────────
+			const shots = [];
+			let current = null; // the shot shown in the Simulated column
+
+			function launch() {
+				const p = predict();
+				const ball = Bodies.circle(LAUNCH.x, LAUNCH.y, BALL_RADIUS, {
+					frictionAir: settings.drag, // 0 = vacuum (Matter's default is 0.01)
+					restitution: 0.3, // small bounce on landing
+					collisionFilter: { group: -1 } // shots pass through each other
+				});
+				// m/s → px per step. Screen y points down, so "up" is negative.
+				Body.setVelocity(ball, { x: (p.vx * SCALE) / 60, y: (-p.vy * SCALE) / 60 });
+				Composite.add(engine.world, ball);
+
+				current = {
+					ball,
+					trail: [{ x: LAUNCH.x, y: LAUNCH.y }],
+					startTime: engine.timing.timestamp, // simulated time in ms
+					range: 0,
+					height: 0,
+					time: 0,
+					landed: false
+				};
+				shots.push(current);
+				if (shots.length > MAX_SHOTS) Composite.remove(engine.world, shots.shift().ball);
+				showSimulated();
+			}
+
+			function showSimulated() {
+				const values = current ? [`${current.range.toFixed(1)} m`, `${current.height.toFixed(1)} m`, `${current.time.toFixed(2)} s`] : ["—", "—", "—"];
+				["s-range", "s-height", "s-time"].forEach((id, i) => {
+					$(id).textContent = values[i];
+					$(id).classList.toggle("flying", Boolean(current && !current.landed));
+				});
+			}
+
+			// ── 5. Physics events ────────────────────────────────────────────
+			// After every physics step, extend the trail and live stats of each flying shot.
+			Events.on(engine, "afterUpdate", () => {
+				for (const shot of shots) {
+					if (shot.landed) continue;
+					const { x, y } = shot.ball.position;
+					shot.trail.push({ x, y });
+					shot.range = (x - LAUNCH.x) / SCALE;
+					shot.height = Math.max(shot.height, (LAUNCH.y - y) / SCALE);
+					shot.time = (engine.timing.timestamp - shot.startTime) / 1000;
+				}
+				if (current && !current.landed) showSimulated();
+			});
+
+			// The first touch with the ground ends a flight.
+			Events.on(engine, "collisionStart", event => {
+				for (const { bodyA, bodyB } of event.pairs) {
+					const ball = bodyA === ground ? bodyB : bodyB === ground ? bodyA : null;
+					const shot = shots.find(s => s.ball === ball);
+					if (!shot || shot.landed) continue;
+
+					shot.landed = true;
+					shot.range = (ball.position.x - LAUNCH.x) / SCALE;
+					shot.time = (engine.timing.timestamp - shot.startTime) / 1000;
+					shot.trail.push({ x: ball.position.x, y: ball.position.y });
+					ball.frictionAir = 0.05; // let it roll to a stop near where it landed
+					if (shot === current) showSimulated();
+				}
+			});
+
+			// ── 6. Drawing ───────────────────────────────────────────────────
+			// Matter.js only simulates. The page draws the scene itself, so the view can
+			// zoom out for long flights while the ball stays a visible size.
+			const canvas = $("scene");
+			const ctx = canvas.getContext("2d");
+			const pixelRatio = window.devicePixelRatio || 1;
+			canvas.width = WIDTH * pixelRatio; // sharp on high-DPI screens
+			canvas.height = HEIGHT * pixelRatio;
+
+			const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+			const view = { zoom: 1 }; // Matter px per canvas px; 2 means zoomed out 2×
+			let textScale = 1;
+
+			// Grid square and label spacing in metres, finest first.
+			const GRID = [
+				[5, 25],
+				[10, 50],
+				[25, 100],
+				[50, 250],
+				[100, 500],
+				[250, 1000],
+				[500, 2500]
+			];
+
+			const font = (size, style = "normal") => `${style} ${size * textScale}px ${FONT}`;
+			const px = metres => (metres * SCALE) / view.zoom; // a distance in metres → canvas px
+
+			// Matter coordinates → canvas, zooming around the launch point.
+			const toCanvas = ({ x, y }) => ({
+				x: LAUNCH.x + (x - LAUNCH.x) / view.zoom,
+				y: LAUNCH.y - (LAUNCH.y - y) / view.zoom
+			});
+
+			// Zoom out in steps (2×, 4×, 8×…) just far enough for the predicted flight to fit.
+			function fitZoom(p) {
+				const needed = Math.max((p.range * SCALE) / (WIDTH - LAUNCH.x - 70), (p.height * SCALE) / (LAUNCH.y - 40));
+				return 2 ** Math.max(0, Math.ceil(Math.log2(needed)));
+			}
+
+			function frame() {
+				const p = predict();
+				const target = fitZoom(p);
+				view.zoom = reducedMotion.matches ? target : view.zoom + (target - view.zoom) * 0.15;
+				// Enlarge canvas text when CSS shrinks the canvas, so it stays readable.
+				textScale = Math.min(1.8, Math.max(1, WIDTH / canvas.clientWidth));
+
+				ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0); // draw in 1000 × 560 units
+				ctx.clearRect(0, 0, WIDTH, HEIGHT);
+				const rLabel = rangeLabel(p);
+				drawPaper(rLabel);
+				drawPrediction(p, rLabel);
+				drawShots();
+				drawLauncher();
+				requestAnimationFrame(frame);
+			}
+
+			// Text and position of the R label under the ground line.
+			function rangeLabel(p) {
+				const landX = LAUNCH.x + px(p.range);
+				const text = `R = ${p.range.toFixed(1)} m`;
+				ctx.font = font(14, "600");
+				const half = ctx.measureText(text).width / 2;
+				const x = Math.min(Math.max(landX, half + 8), WIDTH - half - 8);
+				return { landX, text, x, left: x - half, right: x + half };
+			}
+
+			function drawPaper(rLabel) {
+				// Use the finest grid whose squares are at least 20 px across at this zoom.
+				const [minor, major] = GRID.find(([metres]) => px(metres) >= 20) ?? GRID[GRID.length - 1];
+				ctx.strokeStyle = COLOR.grid;
+				ctx.lineWidth = 1;
+				for (const [metres, alpha] of [
+					[minor, 0.35],
+					[major, 0.85]
+				]) {
+					const step = px(metres);
+					ctx.globalAlpha = alpha;
+					ctx.beginPath();
+					for (let x = LAUNCH.x % step; x <= WIDTH; x += step) {
+						ctx.moveTo(x, 0);
+						ctx.lineTo(x, GROUND_Y);
+					}
+					for (let y = LAUNCH.y - step; y >= 0; y -= step) {
+						ctx.moveTo(0, y);
+						ctx.lineTo(WIDTH, y);
+					}
+					ctx.stroke();
+				}
+				ctx.globalAlpha = 1;
+
+				// Ground line with hatching underneath, as in a physics diagram.
+				ctx.strokeStyle = COLOR.ink;
+				ctx.lineWidth = 2;
+				ctx.beginPath();
+				ctx.moveTo(0, GROUND_Y);
+				ctx.lineTo(WIDTH, GROUND_Y);
+				ctx.stroke();
+				ctx.lineWidth = 1;
+				ctx.beginPath();
+				for (let x = 0; x <= WIDTH + 8; x += 8) {
+					ctx.moveTo(x - 8, GROUND_Y + 8);
+					ctx.lineTo(x, GROUND_Y);
+				}
+				ctx.stroke();
+
+				// Distance labels (skipping any the R label would cover) and height labels.
+				ctx.font = font(14);
+				ctx.fillStyle = COLOR.inkSoft;
+				ctx.textBaseline = "middle";
+				ctx.textAlign = "center";
+				for (let m = major; LAUNCH.x + px(m) <= WIDTH - 20; m += major) {
+					const x = LAUNCH.x + px(m);
+					const text = `${m} m`;
+					const half = ctx.measureText(text).width / 2 + 16 * textScale; // label plus a gap
+					if (x + half < rLabel.left || x - half > rLabel.right) ctx.fillText(text, x, GROUND_Y + 26);
+				}
+				ctx.textAlign = "left";
+				ctx.textBaseline = "top";
+				for (let m = major; LAUNCH.y - px(m) >= 0; m += major) {
+					ctx.fillText(`${m} m`, 6, LAUNCH.y - px(m) + 4);
+				}
+			}
+
+			function drawPrediction(p, rLabel) {
+				// Point on the ideal path t seconds after launch, in canvas px.
+				const at = t => ({
+					x: LAUNCH.x + px(p.vx * t),
+					y: LAUNCH.y - px(p.vy * t - 0.5 * settings.gravity * t * t)
+				});
+
+				ctx.strokeStyle = ctx.fillStyle = COLOR.blue;
+				ctx.font = font(14, "600");
+				ctx.textBaseline = "middle";
+
+				// Dashed parabola
+				ctx.lineWidth = 1.5;
+				ctx.setLineDash([6, 5]);
+				ctx.beginPath();
+				for (let i = 0; i <= 100; i++) {
+					const point = at((p.time * i) / 100);
+					ctx.lineTo(point.x, point.y);
+				}
+				ctx.stroke();
+				ctx.setLineDash([]);
+
+				// H: dimension line from launch height up to the top of the arc
+				const top = at(p.time / 2);
+				const hText = `H = ${p.height.toFixed(1)} m`;
+				ctx.lineWidth = 1;
+				ctx.beginPath();
+				ctx.moveTo(top.x, LAUNCH.y);
+				ctx.lineTo(top.x, top.y);
+				ctx.moveTo(top.x - 5, top.y);
+				ctx.lineTo(top.x + 5, top.y);
+				ctx.stroke();
+				const flip = top.x + 16 + ctx.measureText(hText).width > WIDTH; // keep the label on the canvas
+				ctx.textAlign = flip ? "right" : "left";
+				ctx.fillText(hText, top.x + (flip ? -8 : 8), Math.max((top.y + LAUNCH.y) / 2, 14 * textScale));
+
+				// R: tick under the landing point, with its label
+				ctx.beginPath();
+				ctx.moveTo(rLabel.landX, GROUND_Y + 2);
+				ctx.lineTo(rLabel.landX, GROUND_Y + 14);
+				ctx.stroke();
+				ctx.textAlign = "center";
+				ctx.fillText(rLabel.text, rLabel.x, GROUND_Y + 26);
+			}
+
+			function drawShots() {
+				ctx.strokeStyle = ctx.fillStyle = COLOR.red;
+				ctx.lineJoin = "round";
+				shots.forEach((shot, i) => {
+					ctx.globalAlpha = i === shots.length - 1 ? 1 : 0.3; // fade earlier shots
+
+					// Trail: drawn in Matter coordinates by scaling the canvas around the launch point.
+					ctx.save();
+					ctx.translate(LAUNCH.x, LAUNCH.y);
+					ctx.scale(1 / view.zoom, 1 / view.zoom);
+					ctx.translate(-LAUNCH.x, -LAUNCH.y);
+					ctx.lineWidth = 2 * view.zoom;
+					ctx.beginPath();
+					for (const point of shot.trail) ctx.lineTo(point.x, point.y);
+					ctx.stroke();
+					ctx.restore();
+
+					// Ball: a fixed size on screen, so it stays visible when zoomed out.
+					const ball = toCanvas(shot.ball.position);
+					ctx.beginPath();
+					ctx.arc(ball.x, ball.y, BALL_RADIUS, 0, Math.PI * 2);
+					ctx.fill();
+				});
+				ctx.globalAlpha = 1;
+			}
+
+			function drawLauncher() {
+				const a = (settings.angle * Math.PI) / 180;
+				const length = 30 + settings.speed * 2; // the arrow grows with launch speed
+				const tip = { x: LAUNCH.x + Math.cos(a) * length, y: LAUNCH.y - Math.sin(a) * length };
+				const labelR = 24 + 8 * textScale;
+
+				ctx.strokeStyle = ctx.fillStyle = COLOR.ink;
+				ctx.font = font(15, "italic");
+				ctx.textAlign = "left";
+				ctx.textBaseline = "middle";
+
+				// θ: horizontal reference line and angle arc
+				ctx.lineWidth = 1;
+				ctx.beginPath();
+				ctx.moveTo(LAUNCH.x, LAUNCH.y);
+				ctx.lineTo(LAUNCH.x + 40, LAUNCH.y);
+				ctx.moveTo(LAUNCH.x + 24, LAUNCH.y);
+				ctx.arc(LAUNCH.x, LAUNCH.y, 24, 0, -a, true);
+				ctx.stroke();
+				const thetaY = Math.min(LAUNCH.y - labelR * Math.sin(a / 2), LAUNCH.y - 9 * textScale);
+				ctx.fillText("θ", LAUNCH.x + labelR * Math.cos(a / 2), thetaY);
+
+				// v₀: launch velocity arrow
+				ctx.lineWidth = 2;
+				ctx.beginPath();
+				ctx.moveTo(LAUNCH.x, LAUNCH.y);
+				ctx.lineTo(tip.x, tip.y);
+				ctx.stroke();
+				ctx.save();
+				ctx.translate(tip.x, tip.y);
+				ctx.rotate(-a);
+				ctx.beginPath();
+				ctx.moveTo(3, 0);
+				ctx.lineTo(-8, -5);
+				ctx.lineTo(-8, 5);
+				ctx.closePath();
+				ctx.fill();
+				ctx.restore();
+				ctx.fillText("v₀", tip.x + 6 * textScale, tip.y - 8 * textScale);
+
+				// Launch point
+				ctx.beginPath();
+				ctx.arc(LAUNCH.x, LAUNCH.y, 3.5, 0, Math.PI * 2);
+				ctx.fill();
+			}
+
+			// ── 7. Controls ──────────────────────────────────────────────────
+			function settingsChanged() {
+				readSettings();
+				current = null; // the last result no longer matches the settings
+				showSimulated();
+			}
+
+			for (const id of ["speed", "angle", "drag"]) $(id).addEventListener("input", settingsChanged);
+
+			$("world").addEventListener("input", () => {
+				const g = WORLDS[$("world").value];
+				if (g) $("gravity").value = g; // "Custom" keeps the current gravity
+				settingsChanged();
+			});
+
+			$("gravity").addEventListener("input", () => {
+				$("world").value = matchWorld(Number($("gravity").value));
+				settingsChanged();
+			});
+
+			$("launch").addEventListener("click", launch);
+
+			$("clear").addEventListener("click", () => {
+				shots.forEach(shot => Composite.remove(engine.world, shot.ball));
+				shots.length = 0;
+				current = null;
+				showSimulated();
+			});
+
+			$("world").value = matchWorld(Number($("gravity").value));
+			readSettings();
+			showSimulated();
+			requestAnimationFrame(frame);
+		</script>
+	</body>
+</html>
