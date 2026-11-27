@@ -2,7 +2,7 @@
 
 Who am I? Am I merely what my experiences, my reactions, my thoughts, my feelings, my actions and their consequences make me, or am I something more — something which is, somehow at the same time, both inseparably linked to all these yet exists as a separate entity that remains untouched and untainted by any of them? This very question has occupied the minds of thinkers ever since the rise of civilization, posed alike by the sages who wrote the Vedas and the modern human mind grappling to come to terms with the looming possibility of machines achieving, or at least managing to simulate convincingly enough, the very same quality to which their species has long proudly held the claim of sole proprietorship.
 
-The ancient Indian philosophers believed consciousness to be something separate from the body, the mind, and the spirit — the very thing that they believed inhabited our bodies, reaped the fruits of all the good and bad karma we accumulated, and either went to other worlds or reincarnated. This distinction made their version of spirituality all the more complicated. To them, consciousness is a property of Brahman, the supreme entity (or non-entity, *per definitionem*), and it is the essence of existence to which all living beings must eventually return. Then, one might ask, how is it possible for two people to have separate consciousnesses? And they would answer: it is all the game of Māya, the dark force of nature that blinds human consciousness to its true nature. The exact logistics of that might be beyond the scope of this essay, but we shall return to this viewpoint later, so keep it in the back of your mind.
+The ancient Indian philosophers believed consciousness to be something separate from the body, the mind, and the spirit — the very thing that they believed inhabited our bodies, reaped the fruits of all the good and bad karma we accumulated, and either went to other worlds or reincarnated. This distinction made their version of spirituality all the more complicated. To them, consciousness is a property of Brahman, the supreme entity (or non-entity, _per definitionem_), and it is the essence of existence to which all living beings must eventually return. Then, one might ask, how is it possible for two people to have separate consciousnesses? And they would answer: it is all the game of Māya, the dark force of nature that blinds human consciousness to its true nature. The exact logistics of that might be beyond the scope of this essay, but we shall return to this viewpoint later, so keep it in the back of your mind.
 
 From a purely materialistic point of view, one would be tempted to say that we are nothing more than the results of chemical reactions, and that the electrical impulses passing through our neurons manifest as what we perceive as consciousness. From this perspective, it would not be at all questionable that machines can develop consciousness; it is only a matter of time. Our brains — the neural frameworks that enable us to have cognizance, respond to stimuli, and develop an internal model of the big wide world around us — are formed while we are foetuses. These structures take shape, following instructions encoded in DNA that took billions of years to evolve, with certain instincts like self-preservation and reproduction pre-programmed, while many other capabilities — socialisation, civilisation, language use, mathematical skills, almost everything that makes us modern human beings — are learned from outside sources after birth, through the years in which our brains still have time to grow, learn, and form new neural pathways. This process of learning and reprogramming of neural pathways doesn't stop but continues in one form or another even after our brains have fully developed.
 
@@ -10,13 +10,13 @@ Let's say somebody builds a machine — a humanoid (or shaped like any other ani
 
 To answer that question, let us first define what we mean by the term 'consciousness.' For this essay, I will define the following characteristics for a mind to be considered as having consciousness:
 
-1) It should have a sense of self — what am I?
+1. It should have a sense of self — what am I?
 
-2) It should have an internal model of the external world — where am I?
+2. It should have an internal model of the external world — where am I?
 
-3) It should be able to gain information via external senses — sight, sound, smell, taste, touch — and interpret how that information relates to the above internal model of the world. For example, "I can hear the sound of a fire engine in the distance." Here, the sound is the external information, and its source and distance are particulars that relate it to the mind's world model.
+3. It should be able to gain information via external senses — sight, sound, smell, taste, touch — and interpret how that information relates to the above internal model of the world. For example, "I can hear the sound of a fire engine in the distance." Here, the sound is the external information, and its source and distance are particulars that relate it to the mind's world model.
 
-4) It should be able to make intelligent assumptions based on the information it receives, drawing on its knowledge and skill to form correct associations between facts or concepts (in other words: intelligence), and take decisions based on such assumptions. For example, "The smoke alarm is going off, so I should go and check the stove."
+4. It should be able to make intelligent assumptions based on the information it receives, drawing on its knowledge and skill to form correct associations between facts or concepts (in other words: intelligence), and take decisions based on such assumptions. For example, "The smoke alarm is going off, so I should go and check the stove."
 
 With that in mind, from the materialistic perspective, the answer to the question of whether a machine can be conscious seems to be an emphatic yes. Because there is practically no difference between how the brains of the human baby and the machine 'baby' develop, if they're able to reach step 4 of the consciousness process by going through steps 1 to 3, then there is no practical difference between a mind that was created through organic processes and one that was built from semiconductors.
 
@@ -30,13 +30,13 @@ That will be the most important question as far as our thought experiment is con
 
 In other words, if a body swap occurs between Alice and Bob, and they both realize that it happened, that would have many implications, including but not limited to:
 
-1) Consciousness is something that is tightly coupled with mind but has its own separate existence.
+1. Consciousness is something that is tightly coupled with mind but has its own separate existence.
 
-2) Said coupling can cause the mind to leave an impression of itself on the consciousness, which may or may not be ephemeral in nature.
+2. Said coupling can cause the mind to leave an impression of itself on the consciousness, which may or may not be ephemeral in nature.
 
-3) Since consciousness is not a part of the physical realm, it may be able to exist outside the body, implying the possibility of a life after death, or even reincarnation.
+3. Since consciousness is not a part of the physical realm, it may be able to exist outside the body, implying the possibility of a life after death, or even reincarnation.
 
-4) If that is the case, then it would also follow that artificial consciousness — no matter how similar to the organic one in appearance (see the definition of consciousness given earlier) — can never be real.
+4. If that is the case, then it would also follow that artificial consciousness — no matter how similar to the organic one in appearance (see the definition of consciousness given earlier) — can never be real.
 
 I see that we have now reached the controversial realm of metaphysics, and I apologize to you, the scientifically minded reader, for tricking you into following me here. But, in my defense, it was bound to happen, due to the very nature of the topic of our discussion. Anyway, now that we are here, let us remember that earlier paragraph about ancient Indian philosophy. While it would still be difficult from this point to arrive at their belief that consciousness, no matter which body it occupies, belongs to one supreme entity, our body swap thought experiment has helped us identify the thought process that led to the conjecture that it is something closely tied to but at the same time entirely separate from the mind.
 

@@ -9,22 +9,18 @@ Yes, this is possible. The trick is detecting PWA mode at startup and choosing t
 The standard way to detect a PWA launch is via the `display-mode` media query, with a fallback for iOS Safari:
 
 ```js
-import { createRouter, createWebHistory, createMemoryHistory } from 'vue-router'
+import { createRouter, createWebHistory, createMemoryHistory } from "vue-router";
 
-const isPWA =
-  window.matchMedia('(display-mode: standalone)').matches ||
-  window.matchMedia('(display-mode: fullscreen)').matches ||
-  window.matchMedia('(display-mode: minimal-ui)').matches ||
-  window.navigator.standalone === true // iOS Safari
+const isPWA = window.matchMedia("(display-mode: standalone)").matches || window.matchMedia("(display-mode: fullscreen)").matches || window.matchMedia("(display-mode: minimal-ui)").matches || window.navigator.standalone === true; // iOS Safari
 
 const router = createRouter({
-  history: isPWA ? createMemoryHistory() : createWebHistory(),
-  routes: [
-    // ...
-  ],
-})
+	history: isPWA ? createMemoryHistory() : createWebHistory(),
+	routes: [
+		// ...
+	]
+});
 
-export default router
+export default router;
 ```
 
 A few things worth knowing before you commit to this:
