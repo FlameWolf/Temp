@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8"/>
+		<meta name="viewport" content="width=device-width, initial-scale=1"/>
+		<title>Cross-Reed Glass Caustic Simulator</title>
+		<!--
+			Cross-Reed Glass Caustic Simulator
+			----------------------------------
+			Simulates a distant point light source viewed through cross-reeded glass.
+
+			Model:
+				Glass surface height:  h(x, y) = cos x + cos y + c * cos x * cos y
+				Small-angle refraction: deflection  theta ~ (n - 1) * grad h
+				dh/dx = -sin x * (1 + c * cos y)
+				dh/dy = -sin y * (1 + c * cos x)
+				(The sign is dropped; the pattern is symmetric.)
+
+			A jittered N x N grid of rays samples one periodic cell of the glass.
+			Each ray is binned on the "screen" by its deflection angle. Regions where
+			many rays pile up (where det(Hessian of h) = 0) appear as bright caustics.
+
+			c = 0   -> separable reeds -> square outline
+			c ~ 0.5 -> super-ellipse outline
+			c ~ 1   -> near-circular rim with a four-cusped (astroid-like) inner caustic
+
+			Open this file in any modern web browser. No external dependencies.
+		-->
+		<style>
+			:root {
+				--bg: #f6f7f9;
+				--fg: #1b1f24;
+				--mut: #5a6270;
+				--card: #fff;
+				--bd: #d9dde3;
+				--accent: #e0a030;
+			}
+
+			@media (prefers-color-scheme: dark) {
+				:root {
+					--bg: #14171c;
+					--fg: #e8ebf0;
+					--mut: #9aa3b0;
+					--card: #1d2128;
+					--bd: #333a45;
+				}
+			}
+
+			* {
+				box-sizing: border-box;
+			}
+
+			body {
+				margin: 0;
+				padding: 16px;
+				background: var(--bg);
+				color: var(--fg);
+				font-family:
+					system-ui,
+					-apple-system,
+					"Segoe UI",
+					sans-serif;
+			}
+
+			h1 {
+				font-size: 18px;
+				margin: 0 0 12px;
+			}
+
+			.wrap {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 14px;
+				max-width: 900px;
+				margin: auto;
+			}
+
+			.view {
+				flex: 1 1 300px;
+				min-width: 0;
+			}
+
+			canvas.out {
+				width: 100%;
+				max-width: 440px;
+				aspect-ratio: 1;
+				background: #000;
+				border-radius: 10px;
+				display: block;
+				margin: auto;
+			}
+
+			.ctrl {
+				flex: 1 1 240px;
+				min-width: 0;
+				background: var(--card);
+				border: 1px solid var(--bd);
+				border-radius: 10px;
+				padding: 12px;
+			}
+
+			label {
+				display: block;
+				font-size: 13px;
+				margin-top: 10px;
+			}
+
+			label span {
+				float: right;
+				color: var(--mut);
+				font-variant-numeric: tabular-nums;
+			}
+
+			input[type="range"] {
+				width: 100%;
+				accent-color: var(--accent);
+			}
+
+			input:focus-visible,
+			button:focus-visible {
+				outline: 2px solid var(--accent);
+				outline-offset: 2px;
+			}
+
+			.row {
+				display: flex;
+				gap: 10px;
+				align-items: center;
+				margin-top: 12px;
+				flex-wrap: wrap;
+			}
+
+			canvas.hm {
+				width: 110px;
+				height: 110px;
+				border-radius: 8px;
+				border: 1px solid var(--bd);
+			}
+
+			p {
+				font-size: 12px;
+				color: var(--mut);
+				margin: 6px 0 0;
+			}
+
+			button {
+				font-size: 12px;
+				padding: 5px 9px;
+				border: 1px solid var(--bd);
+				background: var(--bg);
+				color: var(--fg);
+				border-radius: 6px;
+				cursor: pointer;
+				margin: 4px 4px 0 0;
+			}
+		</style>
+	</head>
+
+	<body>
+		<h1 style="text-align: center">Point light through cross-reed glass</h1>
+		<div class="wrap">
+			<div class="view">
+				<canvas class="out" id="out" width="400" height="400" aria-label="Simulated view of a point light through cross-reed glass"></canvas>
+				<p id="stat" aria-live="polite"></p>
+			</div>
+
+			<div class="ctrl">
+				<strong style="font-size: 14px">Cross-reed glass</strong>
+
+				<label>Reed coupling c <span id="v-c"></span> <input id="i-c" type="range" min="-1" max="1.5" step="0.01" value="0.8"/></label>
+
+				<label>Reed rotation <span id="v-r"></span> <input id="i-r" type="range" min="0" max="90" step="1" value="0"/></label>
+
+				<label>Zoom <span id="v-z"></span> <input id="i-z" type="range" min="0.5" max="2" step="0.05" value="1"/></label>
+
+				<label>Exposure <span id="v-e"></span> <input id="i-e" type="range" min="0.2" max="6" step="0.1" value="1.5"/></label>
+
+				<label>Rays (grid N&times;N) <span id="v-n"></span> <input id="i-n" type="range" min="150" max="700" step="10" value="450"/></label>
+
+				<label style="margin-top: 12px"> <input id="i-d" type="checkbox"/> Colour dispersion (white lamp)</label>
+
+				<div>
+					<button type="button" data-c="0">Square (c=0)</button>
+					<button type="button" data-c="0.5">Super-ellipse</button>
+					<button type="button" data-c="1">Circle + astroid</button>
+				</div>
+
+				<div class="row">
+					<canvas class="hm" id="hm" width="110" height="110" aria-label="Glass surface height map"></canvas>
+					<p style="flex: 1; min-width: 120px">
+						Glass surface (2&times;2 cells).<br/>
+						h = cos x + cos y + c&middot;cos x&middot;cos y<br/>
+						Deflection &prop; &nabla;h
+					</p>
+				</div>
+			</div>
+		</div>
+
+		<script>
+			(function () {
+				"use strict";
+
+				const S = 400; // output canvas size (px)
+				const cv = document.getElementById("out");
+				const ctx = cv.getContext("2d");
+				const hm = document.getElementById("hm");
+				const hctx = hm.getContext("2d");
+
+				const I = {
+					c: document.getElementById("i-c"),
+					r: document.getElementById("i-r"),
+					z: document.getElementById("i-z"),
+					e: document.getElementById("i-e"),
+					n: document.getElementById("i-n"),
+					d: document.getElementById("i-d")
+				};
+				const V = id => document.getElementById(id);
+				let pending = false;
+
+				// Parse and clamp a numeric input, falling back to a default.
+				function clamp(v, lo, hi, def) {
+					v = parseFloat(v);
+					return isFinite(v) ? Math.min(hi, Math.max(lo, v)) : def;
+				}
+
+				// Draw a greyscale height map of the glass surface (2x2 periods).
+				function drawHeightMap(c) {
+					const W = 110;
+					const img = hctx.createImageData(W, W);
+					const m = 2 + Math.abs(c); // max |h|
+					let k = 0;
+					for (let j = 0; j < W; j++) {
+						for (let i = 0; i < W; i++) {
+							const x = (i / W) * 4 * Math.PI;
+							const y = (j / W) * 4 * Math.PI;
+							const h = Math.cos(x) + Math.cos(y) + c * Math.cos(x) * Math.cos(y);
+							const g = Math.round((255 * (h + m)) / (2 * m));
+							img.data[k++] = g;
+							img.data[k++] = Math.round(g * 0.95);
+							img.data[k++] = Math.round(g * 0.85);
+							img.data[k++] = 255;
+						}
+					}
+					hctx.putImageData(img, 0, 0);
+				}
+
+				function draw() {
+					pending = false;
+
+					const c = clamp(I.c.value, -1, 1.5, 0.8);
+					const rot = (clamp(I.r.value, 0, 90, 0) * Math.PI) / 180;
+					const z = clamp(I.z.value, 0.5, 2, 1);
+					const ex = clamp(I.e.value, 0.2, 6, 1.5);
+					const N = Math.round(clamp(I.n.value, 150, 700, 450));
+					const dispersion = I.d.checked;
+
+					V("v-c").textContent = c.toFixed(2);
+					V("v-r").textContent = Math.round((rot * 180) / Math.PI) + "\u00B0";
+					V("v-z").textContent = z.toFixed(2) + "\u00D7";
+					V("v-e").textContent = ex.toFixed(1);
+					V("v-n").textContent = N + "\u00B2";
+
+					// One accumulation buffer per colour channel (R, G, B).
+					const A = [new Float32Array(S * S), new Float32Array(S * S), new Float32Array(S * S)];
+
+					const maxDefl = 1 + Math.max(0, Math.abs(c)); // max |grad h|
+					const scale = ((S * 0.42) / maxDefl) * z;
+					const cr = Math.cos(rot),
+						sr = Math.sin(rot);
+
+					// Dispersion: slightly different refractive power per channel (R, G, B).
+					const f = dispersion ? [1.035, 1.0, 0.965] : [1, 1, 1];
+
+					// Deterministic pseudo-random jitter (avoids grid aliasing).
+					let seed = 12345;
+					const rnd = () => (seed = (seed * 1103515245 + 12345) & 2147483647) / 2147483647;
+
+					const TP = 2 * Math.PI;
+					for (let j = 0; j < N; j++) {
+						for (let i = 0; i < N; i++) {
+							const x = (TP * (i + rnd())) / N;
+							const y = (TP * (j + rnd())) / N;
+							const sx = Math.sin(x),
+								sy = Math.sin(y);
+							const cx = Math.cos(x),
+								cy = Math.cos(y);
+
+							// Surface gradient = deflection direction (small-angle refraction).
+							const gx = sx * (1 + c * cy);
+							const gy = sy * (1 + c * cx);
+
+							// Rotate by the reed orientation.
+							const rx = gx * cr - gy * sr;
+							const ry = gx * sr + gy * cr;
+
+							if (!dispersion) {
+								const px = (S / 2 + rx * scale) | 0;
+								const py = (S / 2 + ry * scale) | 0;
+								if (px >= 0 && px < S && py >= 0 && py < S) A[1][py * S + px] += 1;
+							} else {
+								for (let k = 0; k < 3; k++) {
+									const px = (S / 2 + rx * scale * f[k]) | 0;
+									const py = (S / 2 + ry * scale * f[k]) | 0;
+									if (px >= 0 && px < S && py >= 0 && py < S) A[k][py * S + px] += 1;
+								}
+							}
+						}
+					}
+					if (!dispersion) {
+						A[0] = A[1];
+						A[2] = A[1];
+					}
+
+					// Normalise by the mean of lit pixels so exposure is resolution-independent.
+					let sum = 0,
+						cnt = 0;
+					for (let p = 0; p < S * S; p++) {
+						if (A[1][p] > 0) {
+							sum += A[1][p];
+							cnt++;
+						}
+					}
+					const mean = cnt ? sum / cnt : 1;
+					const norm = 1 / (mean * ex * 0.9);
+
+					// Tone-map (1 - exp(-I)) and tint like a sodium/warm street lamp.
+					const img = ctx.createImageData(S, S);
+					const d = img.data;
+					const tint = dispersion ? [1, 1, 1] : [1, 0.86, 0.55];
+					for (let p = 0; p < S * S; p++) {
+						for (let k = 0; k < 3; k++) {
+							const v = 1 - Math.exp(-A[k][p] * norm * 0.6);
+							d[p * 4 + k] = Math.round(255 * Math.min(1, v * tint[k]));
+						}
+						d[p * 4 + 3] = 255;
+					}
+					ctx.putImageData(img, 0, 0);
+
+					drawHeightMap(c);
+
+					let desc;
+					if (Math.abs(c) < 0.15) desc = "Separable reeds: square outline with straight caustics.";
+					else if (Math.abs(c) < 0.75) desc = "Partly coupled: rounded super-ellipse outline with inner cusps.";
+					else desc = "Strong coupling: nearly circular rim with a four-cusped inner caustic.";
+					V("stat").textContent = (N * N).toLocaleString() + " rays traced. " + desc;
+				}
+
+				function schedule() {
+					if (!pending) {
+						pending = true;
+						requestAnimationFrame(draw);
+					}
+				}
+
+				["c", "r", "z", "e", "n"].forEach(k => I[k].addEventListener("input", schedule));
+				I.d.addEventListener("change", schedule);
+				document.querySelectorAll("button[data-c]").forEach(b =>
+					b.addEventListener("click", () => {
+						I.c.value = b.getAttribute("data-c");
+						schedule();
+					})
+				);
+
+				draw();
+			})();
+		</script>
+	</body>
+</html>

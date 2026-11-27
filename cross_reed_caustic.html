@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+	<head>
+		<meta charset="utf-8"/>
+		<meta name="viewport" content="width=device-width, initial-scale=1"/>
+		<title>Light through cross-reeded glass</title>
+		<style>
+			:root {
+				color-scheme: light;
+				--page: #e7ecef;
+				--ink: #1e2a31;
+				--ink-muted: #56656e;
+				--hairline: #c3cdd3;
+				--accent: #b8740b;
+				--night: #0a0b0f;
+				--radius: 6px;
+				font-family: "Gill Sans", "Gill Sans MT", "Seravek", "Trebuchet MS", sans-serif;
+			}
+			@media (prefers-color-scheme: dark) {
+				:root {
+					color-scheme: dark;
+					--page: #111519;
+					--ink: #e2e8ec;
+					--ink-muted: #98a6af;
+					--hairline: #2a333a;
+					--accent: #f0a63a;
+				}
+			}
+			body {
+				margin: 0;
+				background: var(--page);
+				color: var(--ink);
+				line-height: 1.55;
+			}
+			main {
+				max-width: 760px;
+				margin: 0 auto;
+				padding: 2.5rem 1.25rem 3rem;
+			}
+			h1 {
+				font-size: 1.6rem;
+				font-weight: 500;
+				margin: 0 0 0.35rem;
+			}
+			.lede,
+			.note,
+			figcaption,
+			label {
+				color: var(--ink-muted);
+			}
+			.lede {
+				margin: 0 0 1.75rem;
+				max-width: 60ch;
+			}
+			.controls {
+				display: grid;
+				gap: 0.75rem;
+				margin: 0 0 1.5rem;
+			}
+			.row {
+				display: flex;
+				align-items: center;
+				gap: 0.75rem;
+			}
+			input {
+				accent-color: var(--accent);
+			}
+			input[type="range"] {
+				flex: 1;
+			}
+			output {
+				min-width: 3ch;
+				text-align: right;
+				font-variant-numeric: tabular-nums;
+				font-weight: 500;
+				color: var(--ink);
+			}
+			.panels {
+				display: grid;
+				grid-template-columns: minmax(0, 1fr) minmax(0, 1.9fr);
+				gap: 1rem;
+				align-items: start;
+			}
+			figure {
+				margin: 0;
+			}
+			canvas {
+				display: block;
+				width: 100%;
+				height: auto;
+				border-radius: var(--radius);
+				background: var(--night);
+			}
+			figcaption {
+				font-size: 0.85rem;
+				margin-top: 0.4rem;
+			}
+			.note {
+				font-size: 0.9rem;
+				max-width: 68ch;
+				margin: 1.75rem 0 0;
+				padding-top: 1rem;
+				border-top: 1px solid var(--hairline);
+			}
+			@media (max-width: 560px) {
+				.panels {
+					grid-template-columns: minmax(0, 1fr);
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<main>
+			<h1>Light through cross-reeded glass</h1>
+			<p class="lede">A distant lamp seen through two crossed sets of reeds. Raise the interaction between the reeds to watch the square split into a star inside a rounded outline.</p>
+			<div class="controls">
+				<div class="row">
+					<label for="coupling">Reed interaction</label>
+					<input type="range" id="coupling" min="0" max="0.5" step="0.01" value="0.15"/>
+					<output id="coupling-value" for="coupling">0.15</output>
+				</div>
+				<div class="row">
+					<input type="checkbox" id="colour"/>
+					<label for="colour">Colour by where the light crossed: crest side (amber), groove side (blue)</label>
+				</div>
+			</div>
+			<div class="panels">
+				<figure>
+					<canvas id="relief" width="220" height="220" aria-label="Shaded relief of the glass surface"></canvas>
+					<figcaption>Glass surface, shaded relief</figcaption>
+				</figure>
+				<figure>
+					<canvas id="pattern" width="420" height="420" aria-label="Simulated pattern of the lamp seen through the glass"></canvas>
+					<figcaption>The lamp seen through it</figcaption>
+				</figure>
+			</div>
+			<p class="note">Model surface: h = cos X + cos Y + c cos X cos Y, where X and Y advance by 2π from one reed to the next and c is the reed interaction. Each point on the glass deflects the lamp's light in proportion to its slope (the small-angle approximation), so the pattern is a histogram of the surface slopes. The bright lines are caustics, where many points share almost the same slope.</p>
+		</main>
+		<script>
+			"use strict";
+
+			// Random points on one cell of the periodic surface. Sines and cosines come
+			// from a fine lookup table and a small xorshift generator picks the points,
+			// so each redraw is fast and reuses the same points (no flicker on the slider).
+			const TABLE = 65536;
+			const SAMPLES = 2000000;
+			const TAU = 2 * Math.PI;
+			const SIN = new Float32Array(TABLE);
+			const COS = new Float32Array(TABLE);
+			for (let i = 0; i < TABLE; i++) {
+				SIN[i] = Math.sin(((i + 0.5) * TAU) / TABLE);
+				COS[i] = Math.cos(((i + 0.5) * TAU) / TABLE);
+			}
+
+			const patternCanvas = document.getElementById("pattern");
+			const patternCtx = patternCanvas.getContext("2d");
+			const W = patternCanvas.width;
+			// Half-width of the plotted field, in units of the maximum slope of one reed set
+			const RANGE = 1.62;
+			const SCALE = W / (2 * RANGE);
+			const crestHits = new Float32Array(W * W);
+			const grooveHits = new Float32Array(W * W);
+			const patternImage = patternCtx.createImageData(W, W);
+
+			const reliefCanvas = document.getElementById("relief");
+			const reliefCtx = reliefCanvas.getContext("2d");
+			const RW = reliefCanvas.width;
+			const reliefImage = reliefCtx.createImageData(RW, RW);
+
+			// Surface: h = cos X + cos Y + c cos X cos Y
+			// Slopes: hx = -sin X (1 + c cos Y) and hy = -sin Y (1 + c cos X)
+			// Each sample point adds one count to the pixel at its slope (hx, hy).
+			function drawPattern(c, colourByOrigin) {
+				crestHits.fill(0);
+				grooveHits.fill(0);
+				let s = 2463534242;
+				for (let n = 0; n < SAMPLES; n++) {
+					s ^= s << 13;
+					s ^= s >>> 17;
+					s ^= s << 5;
+					const i = (s >>> 8) & (TABLE - 1);
+					s ^= s << 13;
+					s ^= s >>> 17;
+					s ^= s << 5;
+					const j = (s >>> 8) & (TABLE - 1);
+					const cosX = COS[i];
+					const cosY = COS[j];
+					const hx = -SIN[i] * (1 + c * cosY);
+					const hy = -SIN[j] * (1 + c * cosX);
+					const px = ((hx + RANGE) * SCALE) | 0;
+					const py = ((RANGE - hy) * SCALE) | 0;
+					if (px < 0 || py < 0 || px >= W || py >= W) continue;
+					// Crest side: nearer a bump (where crests cross) than a hollow (where grooves cross)
+					if (cosX + cosY > 0) crestHits[py * W + px]++;
+					else grooveHits[py * W + px]++;
+				}
+
+				// Normalise to the mean level of the lit area, then apply a display gamma
+				let sum = 0;
+				let lit = 0;
+				for (let p = 0; p < W * W; p++) {
+					const v = crestHits[p] + grooveHits[p];
+					if (v > 0) {
+						sum += v;
+						lit++;
+					}
+				}
+				const norm = (2.5 * sum) / Math.max(lit, 1);
+				const d = patternImage.data;
+				for (let p = 0; p < W * W; p++) {
+					let r, g, b;
+					if (colourByOrigin) {
+						const a = Math.pow(Math.min(crestHits[p] / (0.6 * norm), 1), 0.6);
+						const q = Math.pow(Math.min(grooveHits[p] / (0.6 * norm), 1), 0.6);
+						r = 255 * a + 70 * q;
+						g = 160 * a + 160 * q;
+						b = 60 * a + 255 * q;
+					} else {
+						const v = Math.pow(Math.min((crestHits[p] + grooveHits[p]) / norm, 1), 0.6);
+						r = 255 * v;
+						g = 224 * v;
+						b = 180 * v;
+					}
+					d[4 * p] = Math.min(255, r + 10);
+					d[4 * p + 1] = Math.min(255, g + 10);
+					d[4 * p + 2] = Math.min(255, b + 13);
+					d[4 * p + 3] = 255;
+				}
+				patternCtx.putImageData(patternImage, 0, 0);
+			}
+
+			// Shaded relief of two and a half reed periods, lit from the upper left
+			function drawRelief(c) {
+				const d = reliefImage.data;
+				const step = (2.5 * TAU) / RW;
+				for (let y = 0; y < RW; y++) {
+					const Y = y * step + 0.5;
+					const sinY = Math.sin(Y);
+					const cosY = Math.cos(Y);
+					for (let x = 0; x < RW; x++) {
+						const X = x * step + 0.5;
+						const sinX = Math.sin(X);
+						const cosX = Math.cos(X);
+						const hx = -sinX * (1 + c * cosY);
+						const hy = -sinY * (1 + c * cosX);
+						const h = cosX + cosY + c * cosX * cosY;
+						const v = Math.max(0, Math.min(1, 0.52 + 0.16 * (hx + hy) + 0.06 * h));
+						const p = 4 * (y * RW + x);
+						d[p] = 20 + 190 * v;
+						d[p + 1] = 20 + 205 * v;
+						d[p + 2] = 24 + 215 * v;
+						d[p + 3] = 255;
+					}
+				}
+				reliefCtx.putImageData(reliefImage, 0, 0);
+			}
+
+			const slider = document.getElementById("coupling");
+			const readout = document.getElementById("coupling-value");
+			const colourBox = document.getElementById("colour");
+			let queued = false;
+
+			function update() {
+				queued = false;
+				const c = parseFloat(slider.value);
+				readout.textContent = c.toFixed(2);
+				drawRelief(c);
+				drawPattern(c, colourBox.checked);
+			}
+
+			// Redraw at most once per animation frame while the slider is being dragged
+			function requestUpdate() {
+				if (!queued) {
+					queued = true;
+					requestAnimationFrame(update);
+				}
+			}
+
+			slider.addEventListener("input", requestUpdate);
+			colourBox.addEventListener("change", requestUpdate);
+			update();
+		</script>
+	</body>
+</html>
